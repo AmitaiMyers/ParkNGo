@@ -243,3 +243,16 @@
 .link {
   font: var(--text-label);
 }
+
+.questions {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-2);
+}
+
+.questionsTitle {
+  font: var(--text-label);
+  font-weight: 600;
+}

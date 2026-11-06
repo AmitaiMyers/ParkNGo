@@ -345,3 +345,15 @@ the why-line, singular forms and bidi parts; 9 Playwright tests with mocked netw
 keyboard-only, desktop layout without overflow, reduced motion); and axe-core WCAG 2.2 A/AA scans with **0 serious or
 critical issues** on home, results, settings and navigation, in light and dark. Every color pair added during the
 build was measured too: all ≥ 4.5:1 for text and ≥ 3:1 for UI. CI runs the e2e and accessibility suite before every deploy.
+
+### Trip questions and resilience (after user testing)
+- **"Are you OK with…"** on every trip: walking over 1 km (otherwise ≤ 1 km; yes allows up to 2 km), paid parking
+  (free still ranks first), and parking in Tel Aviv-Yafo. Defaults come from Settings; each answer re-plans, and the
+  empty state's fixes set the same answers.
+- **No more "Load failed":**
+  - The routing client allows at most 4 requests in flight.
+  - It retries dropped or overloaded requests twice.
+  - Each lot is routed independently: a failure costs that lot ("1 lot could not be checked"), not the plan.
+  - Only a full outage shows an error, as a plain "Couldn't reach the routing service" message.
+- **Address search is limited to Israel** (it found French and German streets first before).
+- **Night / Shabbat warning** when even the fastest option takes over 3 hours.

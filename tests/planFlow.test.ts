@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { flowReducer, initialFlowState, nextTimeAfter, visibleOutcome } from '../src/state/planFlow.ts';
+import { effectiveSettings, flowReducer, initialFlowState, nextTimeAfter, preferencesFromSettings, visibleOutcome } from '../src/state/planFlow.ts';
+import { settings as baseSettings } from './fixtures.ts';
 import type { FlowState, PlanOutcome } from '../src/state/planFlow.ts';
 import { nearestSnap } from '../src/ui/Sheet.tsx';
 import type { PlanResult, TripOption } from '../src/lib/planner.ts';
@@ -23,7 +24,7 @@ function run(state: FlowState, ...actions: Parameters<typeof flowReducer>[1][]):
 }
 
 describe('flowReducer', () => {
-  const start = initialFlowState('car');
+  const start = initialFlowState({ ...baseSettings, vehicle: 'car' });
 
   it('bumps the draft version on every draft change (which triggers auto-planning)', () => {
     const state = run(start, { type: 'setDestination', place: AZRIELI }, { type: 'setVehicle', vehicle: 'bicycle' });
@@ -101,5 +102,26 @@ describe('nearestSnap', () => {
     expect(nearestSnap(700, 0, heights)).toBe('full');
     expect(nearestSnap(520, 1.2, heights)).toBe('full');
     expect(nearestSnap(480, -1.2, heights)).toBe('peek');
+  });
+});
+
+describe('trip preferences ("Are you OK with…")', () => {
+  const settings = { ...baseSettings, maxWalkMeters: 800, pricePolicy: 'free_only' as const, avoidZoneIds: ['tel-aviv-yafo'] };
+
+  it('start from Settings', () => {
+    expect(preferencesFromSettings(settings)).toEqual({ walkOverOneKm: false, paidParking: false, parkInAvoidZones: false });
+  });
+
+  it('turn the answers into planner settings', () => {
+    const yes = effectiveSettings(settings, { walkOverOneKm: true, paidParking: true, parkInAvoidZones: true }, ['tel-aviv-yafo']);
+    expect(yes).toMatchObject({ maxWalkMeters: 2000, pricePolicy: 'allow_paid', avoidZoneIds: [] });
+    const no = effectiveSettings({ ...settings, maxWalkMeters: 1500, avoidZoneIds: [] }, { walkOverOneKm: false, paidParking: false, parkInAvoidZones: false }, ['tel-aviv-yafo']);
+    expect(no).toMatchObject({ maxWalkMeters: 1000, pricePolicy: 'free_only', avoidZoneIds: ['tel-aviv-yafo'] });
+  });
+
+  it('changing an answer re-plans (bumps the draft version)', () => {
+    const state = flowReducer(initialFlowState(settings), { type: 'setPreference', key: 'paidParking', value: true });
+    expect(state.draft.preferences.paidParking).toBe(true);
+    expect(state.draftVersion).toBe(1);
   });
 });

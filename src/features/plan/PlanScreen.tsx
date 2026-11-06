@@ -33,7 +33,6 @@ interface Props {
   theme: Theme;
   online: boolean;
   onPlaceChosen: (place: Place) => void;
-  onSettingsChange: (settings: Settings) => void;
   onOpenSettings: () => void;
   onStart: (option: TripOption, request: TripRequest) => void;
   onClearParked: () => void;
@@ -99,7 +98,7 @@ function ParkedCard({ parked, onReturn, onClear }: { parked: ParkedVehicle; onRe
 }
 
 export function PlanScreen(props: Props) {
-  const { state, dispatch, settings, dataset, saved, recents, parked, theme, online, onPlaceChosen, onSettingsChange, onOpenSettings, onStart, onClearParked } = props;
+  const { state, dispatch, settings, dataset, saved, recents, parked, theme, online, onPlaceChosen, onOpenSettings, onStart, onClearParked } = props;
   const i18n = useI18n();
   const { language, t } = i18n;
   const isWide = useIsWide();
@@ -162,9 +161,9 @@ export function PlanScreen(props: Props) {
           {!hasTrip && parked !== null && (
             <ParkedCard parked={parked} onReturn={() => dispatch({ type: 'returnToVehicle', parked })} onClear={onClearParked} />
           )}
-          {hasTrip && state.draft.mode === 'park_and_ride' && <TripOptions draft={state.draft} dispatch={dispatch} />}
+          {hasTrip && state.draft.mode === 'park_and_ride' && <TripOptions draft={state.draft} zones={dataset.avoidZones} dispatch={dispatch} />}
           {hasTrip && (
-            <ResultsPanel state={state} dispatch={dispatch} settings={settings} zones={dataset.avoidZones} onSettingsChange={onSettingsChange} onStart={onStart} />
+            <ResultsPanel state={state} dispatch={dispatch} settings={settings} onStart={onStart} />
           )}
         </div>
       </Sheet>

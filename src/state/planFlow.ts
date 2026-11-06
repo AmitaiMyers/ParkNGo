@@ -9,11 +9,45 @@
 // Each plan carries a requestId, so results of an outdated plan are ignored.
 
 import type { PlanProgress, PlanResult } from '../lib/planner.ts';
-import type { ParkedVehicle, Place, TripRequest, VehicleType } from '../lib/types.ts';
+import type { ParkedVehicle, Place, Settings, TripRequest, VehicleType } from '../lib/types.ts';
 
 export type Origin = { kind: 'current' } | { kind: 'place'; place: Place };
 export type Departure = { kind: 'now' } | { kind: 'at'; time: Date };
 export type TripMode = 'park_and_ride' | 'return_to_vehicle';
+
+/** The "Are you OK with…" answers for this trip. They start from Settings and override it for planning. */
+export interface TripPreferences {
+  walkOverOneKm: boolean;
+  paidParking: boolean;
+  parkInAvoidZones: boolean;
+}
+
+export type PreferenceKey = keyof TripPreferences;
+
+/** Walking limits behind the "more than 1 km" question. */
+export const NEAR_WALK_METERS = 1000;
+export const FAR_WALK_METERS = 2000;
+
+export function preferencesFromSettings(settings: Settings): TripPreferences {
+  return {
+    walkOverOneKm: settings.maxWalkMeters > NEAR_WALK_METERS,
+    paidParking: settings.pricePolicy === 'allow_paid',
+    parkInAvoidZones: settings.avoidZoneIds.length === 0,
+  };
+}
+
+/**
+ * The settings the planner uses for this trip. Paid parking stays "less favourite than free":
+ * the planner's cost counts the price (unknown prices at the user's maximum), so free lots rank first.
+ */
+export function effectiveSettings(settings: Settings, preferences: TripPreferences, allZoneIds: string[]): Settings {
+  return {
+    ...settings,
+    maxWalkMeters: preferences.walkOverOneKm ? Math.max(settings.maxWalkMeters, FAR_WALK_METERS) : Math.min(settings.maxWalkMeters, NEAR_WALK_METERS),
+    pricePolicy: preferences.paidParking ? 'allow_paid' : 'free_only',
+    avoidZoneIds: preferences.parkInAvoidZones ? [] : settings.avoidZoneIds.length > 0 ? settings.avoidZoneIds : allZoneIds,
+  };
+}
 
 export interface Draft {
   mode: TripMode;
@@ -24,6 +58,7 @@ export interface Draft {
   departure: Departure;
   /** Return time as "HH:mm", or null when no return trip is wanted. */
   returnTime: string | null;
+  preferences: TripPreferences;
 }
 
 export interface PlanOutcome {
@@ -54,6 +89,8 @@ export type FlowAction =
   | { type: 'setCarryVehicle'; carry: boolean }
   | { type: 'setDeparture'; departure: Departure }
   | { type: 'setReturnTime'; time: string | null }
+  | { type: 'setPreference'; key: PreferenceKey; value: boolean }
+  | { type: 'resetPreferences'; preferences: TripPreferences }
   | { type: 'returnToVehicle'; parked: ParkedVehicle }
   | { type: 'retry' }
   | { type: 'planStarted'; requestId: number }
@@ -62,9 +99,18 @@ export type FlowAction =
   | { type: 'planFailed'; requestId: number; message: string }
   | { type: 'select'; optionId: string };
 
-export function initialFlowState(vehicle: VehicleType): FlowState {
+export function initialFlowState(settings: Settings): FlowState {
   return {
-    draft: { mode: 'park_and_ride', origin: { kind: 'current' }, destination: null, vehicle, carryVehicle: false, departure: { kind: 'now' }, returnTime: null },
+    draft: {
+      mode: 'park_and_ride',
+      origin: { kind: 'current' },
+      destination: null,
+      vehicle: settings.vehicle,
+      carryVehicle: false,
+      departure: { kind: 'now' },
+      returnTime: null,
+      preferences: preferencesFromSettings(settings),
+    },
     draftVersion: 0,
     status: { kind: 'idle' },
     selectedOptionId: null,
@@ -126,6 +172,10 @@ export function flowReducer(state: FlowState, action: FlowAction): FlowState {
       return withDraft(state, { ...draft, departure: action.departure });
     case 'setReturnTime':
       return withDraft(state, { ...draft, returnTime: action.time });
+    case 'setPreference':
+      return withDraft(state, { ...draft, preferences: { ...draft.preferences, [action.key]: action.value } });
+    case 'resetPreferences':
+      return withDraft(state, { ...draft, preferences: action.preferences });
     case 'returnToVehicle':
       return withDraft(state, {
         ...draft,

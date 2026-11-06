@@ -1,9 +1,10 @@
-import { Clock, PackageCheck, Undo2 } from 'lucide-react';
+import { Banknote, Clock, Footprints, MapPinned, PackageCheck, Undo2 } from 'lucide-react';
 import { useState } from 'react';
-import type { Dispatch } from 'react';
+import type { Dispatch, ReactNode } from 'react';
 import { formatTime } from '../../lib/i18n.ts';
 import { VEHICLE_TYPES } from '../../lib/types.ts';
-import type { Draft, FlowAction } from '../../state/planFlow.ts';
+import type { AvoidZone } from '../../lib/types.ts';
+import type { Draft, FlowAction, PreferenceKey } from '../../state/planFlow.ts';
 import { Chip } from '../../ui/Chip.tsx';
 import { SegmentedControl } from '../../ui/SegmentedControl.tsx';
 import { toDateTimeLocalValue, useI18n } from '../../ui.ts';
@@ -12,9 +13,15 @@ import styles from './Results.module.css';
 
 const DEFAULT_RETURN_TIME = '17:00';
 
-/** Vehicle, departure time, return trip and carry-on: every change re-plans in place. */
-export function TripOptions({ draft, dispatch }: { draft: Draft; dispatch: Dispatch<FlowAction> }) {
+/** Vehicle, time, return trip, carry-on, and the per-trip "Are you OK with…" questions. Every change re-plans. */
+export function TripOptions({ draft, zones, dispatch }: { draft: Draft; zones: AvoidZone[]; dispatch: Dispatch<FlowAction> }) {
   const { language, t } = useI18n();
+  const zoneNames = zones.map((zone) => zone.name[language]).join(', ');
+  const question = (key: PreferenceKey, icon: ReactNode, label: string) => (
+    <Chip icon={icon} pressed={draft.preferences[key]} onClick={() => dispatch({ type: 'setPreference', key, value: !draft.preferences[key] })}>
+      {label}
+    </Chip>
+  );
   const [editingTime, setEditingTime] = useState(false);
   const vehicleOptions = VEHICLE_TYPES.map((vehicle) => {
     const Icon = VEHICLE_ICONS[vehicle];
@@ -61,6 +68,16 @@ export function TripOptions({ draft, dispatch }: { draft: Draft; dispatch: Dispa
           </label>
         </div>
       )}
+      <div className={styles.questions} role="group" aria-labelledby="ok-with-heading">
+        <span id="ok-with-heading" className={styles.questionsTitle}>
+          {t('okWith')}
+        </span>
+        <div className={styles.chips}>
+          {question('walkOverOneKm', <Footprints size={16} aria-hidden="true" />, t('pref_walkOverOneKm'))}
+          {question('paidParking', <Banknote size={16} aria-hidden="true" />, t('pref_paidParking'))}
+          {zones.length > 0 && question('parkInAvoidZones', <MapPinned size={16} aria-hidden="true" />, t('pref_parkInAvoidZones', { zone: zoneNames }))}
+        </div>
+      </div>
       {draft.returnTime !== null && (
         <label className={styles.inlineField}>
           {t('returnAt')}

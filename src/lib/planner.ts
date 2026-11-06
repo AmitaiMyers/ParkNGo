@@ -63,6 +63,8 @@ export interface PlanResult {
   candidatesConsidered: number;
   /** Candidates dropped because their live status said full or closed. */
   skippedFullOrClosed: number;
+  /** Lots that could not be routed because a request failed (shown as a note, not an error). */
+  unroutedLots: number;
   liveStatuses: Map<string, LiveLotStatus>;
   liveStatusError: string | null;
   options: TripOption[];
@@ -233,6 +235,18 @@ export interface PlanProgress {
 
 export type ProgressListener = (progress: PlanProgress) => void;
 
+type Settled<T> = { kind: 'ok'; value: T } | { kind: 'failed'; error: Error };
+
+/** Turns a rejection into data, so independent requests can fail one by one (see planTrip). */
+function settle<T>(promise: Promise<T>): Promise<Settled<T>> {
+  return promise.then(
+    (value) => ({ kind: 'ok', value }),
+    (error: Error) => ({ kind: 'failed', error }),
+  );
+}
+
+const valueOrNull = <T>(outcome: Settled<T | null>): T | null => (outcome.kind === 'ok' ? outcome.value : null);
+
 /** Routing plus live lot status; injected so the planner can be unit-tested. */
 export interface PlannerApi extends RoutingApi {
   lotStatuses: () => Promise<Map<string, LiveLotStatus>>;
@@ -340,24 +354,33 @@ export async function planTrip(
   const ranked = await rankByStreetTime(open, request, api);
   const toRoute = topWithParkAndRide(ranked, FULL_ROUTING_COUNT, FULL_ROUTING_EXTRA_PARK_AND_RIDE);
   onProgress({ stage: 'routing', lotCount: toRoute.length });
+  // Each lot and each comparison is routed independently: one failed request costs that lot, not the plan.
   const [viaSpots, vehicleOnly, transitOnly, carryOn] = await Promise.all([
-    Promise.all(toRoute.map((spot) => routeViaSpot(spot, request, settings, api))),
-    vehicleOnlyOption(request, settings, api),
-    bestTransitOption('transit_only', walkingAccess(settings), request, settings, api),
-    carryOnOption(request, settings, api),
+    Promise.all(toRoute.map((spot) => settle(routeViaSpot(spot, request, settings, api)))),
+    settle(vehicleOnlyOption(request, settings, api)),
+    settle(bestTransitOption('transit_only', walkingAccess(settings), request, settings, api)),
+    settle(carryOnOption(request, settings, api)),
   ]);
+  const failures = [...viaSpots, vehicleOnly, transitOnly, carryOn].filter((outcome) => outcome.kind === 'failed');
+  const succeededLots = viaSpots.flatMap((outcome) => (outcome.kind === 'ok' ? [outcome.value] : []));
+  const usableBaselines = [vehicleOnly, transitOnly, carryOn].filter((outcome) => outcome.kind === 'ok' && outcome.value !== null);
+  if (failures.length > 0 && succeededLots.flat().length === 0 && usableBaselines.length === 0) {
+    // Nothing at all could be routed: report the first error rather than an empty, misleading result.
+    throw failures[0]!.error;
+  }
   onProgress({ stage: 'comparing', lotCount: null });
-  const options = bestPerSpot(viaSpots.flat());
+  const options = bestPerSpot(succeededLots.flat());
   return {
     candidatesConsidered: candidates.length,
     skippedFullOrClosed: candidates.length - open.length,
+    unroutedLots: viaSpots.length - succeededLots.length,
     liveStatuses: live.statuses,
     liveStatusError: live.error,
     options,
     highlights: pickHighlights(options),
-    vehicleOnly,
-    transitOnly,
-    carryOn,
+    vehicleOnly: valueOrNull(vehicleOnly),
+    transitOnly: valueOrNull(transitOnly),
+    carryOn: valueOrNull(carryOn),
   };
 }
 

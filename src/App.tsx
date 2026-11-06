@@ -39,7 +39,7 @@ export function App() {
   const { t } = i18n;
 
   // Memoized: a new object would make usePlanFlow re-plan on every render.
-  const planContext = useMemo(() => ({ settings, dataset, api: plannerApi, myLocationName: t('myLocation') }), [settings, dataset, t]);
+  const planContext = useMemo(() => ({ settings, dataset, api: plannerApi, t }), [settings, dataset, t]);
   const [flow, dispatch] = usePlanFlow(planContext);
 
   // Dark during navigation after sunset (checked every minute), otherwise follow the system.
@@ -96,7 +96,6 @@ export function App() {
           theme={theme}
           online={online}
           onPlaceChosen={rememberPlace}
-          onSettingsChange={changeSettings}
           onOpenSettings={() => setSettingsOpen(true)}
           onStart={(option, request) => setScreen({ kind: 'navigate', option, request })}
           onClearParked={() => replaceParked(null)}

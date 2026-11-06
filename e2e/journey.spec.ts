@@ -141,3 +141,38 @@ test('Home & Work: add from the chip, then plan with one tap', async ({ page }) 
   await page.reload();
   await expect(page.getByRole('button', { name: 'Work', exact: true })).toBeVisible();
 });
+
+test('"Are you OK with…" questions re-plan the trip', async ({ page }) => {
+  await chooseDestination(page);
+  const recommended = page.getByRole('article').filter({ hasText: 'Recommended' });
+  await expect(recommended).toBeVisible();
+  const questions = page.getByRole('group', { name: 'Are you OK with…' });
+  const paid = questions.getByRole('button', { name: 'Paid parking (free first)' });
+  await expect(paid).toHaveAttribute('aria-pressed', 'true');
+  await expect(questions.getByRole('button', { name: 'Walking over 1 km' })).toHaveAttribute('aria-pressed', 'false');
+  await expect(questions.getByRole('button', { name: 'Parking in Tel Aviv-Yafo' })).toHaveAttribute('aria-pressed', 'false');
+
+  // Free parking only: the paid lots disappear, the free one stays.
+  await paid.click();
+  await expect(paid).toHaveAttribute('aria-pressed', 'false');
+  await expect(recommended).toContainText('Kiryat Arye lot');
+  await expect(page.getByRole('article').filter({ hasText: 'Price unknown' })).toHaveCount(0);
+});
+
+test('a dropped request does not fail the whole plan', async ({ page }) => {
+  // Every street route to one lot fails at the network level (Safari reports "Load failed").
+  await page.route('https://api.transitous.org/api/v6/plan?*', (route) => {
+    const url = new URL(route.request().url());
+    return url.searchParams.get('toPlace') === '32.145000,34.810000' ? route.abort('failed') : route.fallback();
+  });
+  await chooseDestination(page);
+  await expect(page.getByRole('article').filter({ hasText: 'Recommended' })).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByText('1 lot could not be checked (connection problem)')).toBeVisible();
+});
+
+test('a full outage shows a plain message, not "Load failed"', async ({ page }) => {
+  await page.route('https://api.transitous.org/api/v6/plan?*', (route) => route.abort('failed'));
+  await page.route('https://api.transitous.org/api/v1/one-to-many?*', (route) => route.abort('failed'));
+  await chooseDestination(page);
+  await expect(page.getByRole('alert')).toContainText('Couldn’t reach the routing service. Check your connection and try again.', { timeout: 30_000 });
+});

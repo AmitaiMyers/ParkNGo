@@ -1,14 +1,14 @@
 import { useEffect, useState } from 'react';
 import type { Dispatch } from 'react';
-import { formatTime } from '../../lib/i18n.ts';
+import { formatArrival, formatTime } from '../../lib/i18n.ts';
 import type { MessageKey } from '../../lib/i18n.ts';
 import { PLAN_STAGES, planReturnTrip } from '../../lib/planner.ts';
 import type { PlanProgress, PlanResult, TripOption } from '../../lib/planner.ts';
 import { transitousApi } from '../../lib/transitous.ts';
 import type { Itinerary } from '../../lib/transitous.ts';
-import type { AvoidZone, Settings, TripRequest } from '../../lib/types.ts';
-import { visibleOutcome } from '../../state/planFlow.ts';
-import type { FlowAction, FlowState, PlanOutcome } from '../../state/planFlow.ts';
+import type { Settings, TripRequest } from '../../lib/types.ts';
+import { FAR_WALK_METERS, visibleOutcome } from '../../state/planFlow.ts';
+import type { Draft, FlowAction, FlowState, PlanOutcome, PreferenceKey } from '../../state/planFlow.ts';
 import type { BadgeTone } from '../../ui/Badge.tsx';
 import { Button } from '../../ui/Button.tsx';
 import { ProgressSteps, Skeleton } from '../../ui/Feedback.tsx';
@@ -19,19 +19,18 @@ import { OptionCard } from './OptionCard.tsx';
 import styles from './Results.module.css';
 
 type HighlightKey = 'balanced' | 'fastest' | 'cheapest';
+/** If even the fastest option takes longer than this, public transport is probably not running (night, Shabbat). */
+const LONG_TRIP_MINUTES = 180;
 const HIGHLIGHTS: { key: HighlightKey; tone: BadgeTone; label: MessageKey }[] = [
   { key: 'balanced', tone: 'recommended', label: 'balanced' },
   { key: 'fastest', tone: 'fastest', label: 'fastest' },
   { key: 'cheapest', tone: 'cheapest', label: 'cheapest' },
 ];
-const WALK_FIX_METERS = 1200;
 
 interface Props {
   state: FlowState;
   dispatch: Dispatch<FlowAction>;
   settings: Settings;
-  zones: AvoidZone[];
-  onSettingsChange: (settings: Settings) => void;
   onStart: (option: TripOption, request: TripRequest) => void;
 }
 
@@ -95,35 +94,29 @@ function highlightCards(result: PlanResult): { option: TripOption; badges: Highl
   return cards;
 }
 
-function EmptyState({ settings, zones, onSettingsChange }: Pick<Props, 'settings' | 'zones' | 'onSettingsChange'>) {
-  const { language, t } = useI18n();
-  const avoided = zones.filter((zone) => settings.avoidZoneIds.includes(zone.id));
+/** No option: say why, and offer the trip questions as one-tap fixes. */
+function EmptyState({ draft, dispatch }: { draft: Draft; dispatch: Dispatch<FlowAction> }) {
+  const { t } = useI18n();
+  const { preferences } = draft;
+  const fix = (key: PreferenceKey, label: string) => (
+    <Button variant="secondary" size="small" onClick={() => dispatch({ type: 'setPreference', key, value: true })}>
+      {label}
+    </Button>
+  );
   return (
     <div className={styles.empty}>
       <h3>{t('emptyTitle')}</h3>
       <p className={styles.muted}>{t('emptyHint')}</p>
       <div className={styles.fixes}>
-        {settings.pricePolicy === 'free_only' && (
-          <Button variant="secondary" size="small" onClick={() => onSettingsChange({ ...settings, pricePolicy: 'allow_paid' })}>
-            {t('fixAllowPaid')}
-          </Button>
-        )}
-        {settings.maxWalkMeters < WALK_FIX_METERS && (
-          <Button variant="secondary" size="small" onClick={() => onSettingsChange({ ...settings, maxWalkMeters: WALK_FIX_METERS })}>
-            {t('fixWalkMore', { m: WALK_FIX_METERS })}
-          </Button>
-        )}
-        {avoided.map((zone) => (
-          <Button key={zone.id} variant="secondary" size="small" onClick={() => onSettingsChange({ ...settings, avoidZoneIds: settings.avoidZoneIds.filter((id) => id !== zone.id) })}>
-            {t('fixAvoidZone', { zone: zone.name[language] })}
-          </Button>
-        ))}
+        {!preferences.paidParking && fix('paidParking', t('fixAllowPaid'))}
+        {!preferences.walkOverOneKm && fix('walkOverOneKm', t('fixWalkMore', { m: FAR_WALK_METERS }))}
+        {!preferences.parkInAvoidZones && fix('parkInAvoidZones', t('fixParkInZones'))}
       </div>
     </div>
   );
 }
 
-function OutcomeView({ outcome, state, dispatch, settings, zones, onSettingsChange, onStart }: Props & { outcome: PlanOutcome }) {
+function OutcomeView({ outcome, state, dispatch, settings, onStart }: Props & { outcome: PlanOutcome }) {
   const i18n = useI18n();
   const { language, t } = i18n;
   const { request, result } = outcome;
@@ -164,8 +157,14 @@ function OutcomeView({ outcome, state, dispatch, settings, zones, onSettingsChan
         <span className={styles.muted}>{t('candidates', { n: result.candidatesConsidered })}</span>
       </div>
       {result.skippedFullOrClosed > 0 && <p className={styles.muted}>{t('skippedFull', { n: result.skippedFullOrClosed })}</p>}
+      {result.unroutedLots > 0 && <p className={styles.muted}>{t('unroutedLots', { n: result.unroutedLots })}</p>}
       {result.liveStatusError !== null && <p className={styles.warning}>{t('liveStatusUnavailable', { error: result.liveStatusError })}</p>}
-      {cards.length === 0 && <EmptyState settings={settings} zones={zones} onSettingsChange={onSettingsChange} />}
+      {cards.length === 0 && <EmptyState draft={state.draft} dispatch={dispatch} />}
+      {result.highlights !== null && result.highlights.fastest.totalMinutes > LONG_TRIP_MINUTES && (
+        <p className={styles.warning} role="status">
+          {t('longWait', { time: formatArrival(language, result.highlights.fastest.arrival, result.highlights.fastest.departure) })}
+        </p>
+      )}
       {cards.map(({ option, badges }, index) => {
         const live = option.spot === null ? undefined : result.liveStatuses.get(option.spot.id);
         const selected = option.id === state.selectedOptionId;
@@ -254,7 +253,7 @@ export function ResultsPanel(props: Props) {
       {status.kind === 'planning' && outcome !== null && <div className={styles.progressBar} role="progressbar" aria-label={t('updating')} />}
       {status.kind === 'error' && (
         <div className={styles.error} role="alert">
-          <span>{t('planFailed', { error: status.message })}</span>
+          <span>{status.message}</span>
           <Button variant="secondary" size="small" onClick={() => props.dispatch({ type: 'retry' })}>
             {t('retry')}
           </Button>

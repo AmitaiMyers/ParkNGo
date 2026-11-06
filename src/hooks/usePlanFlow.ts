@@ -2,8 +2,10 @@ import { useEffect, useReducer, useRef } from 'react';
 import type { Dispatch } from 'react';
 import { planReturnToVehicle, planTrip } from '../lib/planner.ts';
 import type { PlannerApi, PlanResult, ProgressListener, TripOption } from '../lib/planner.ts';
+import type { Translate } from '../lib/i18n.ts';
+import { ServiceUnavailableError } from '../lib/transitous.ts';
 import type { ParkingDataset, Place, Settings, TripRequest } from '../lib/types.ts';
-import { flowReducer, initialFlowState, nextTimeAfter } from '../state/planFlow.ts';
+import { effectiveSettings, flowReducer, initialFlowState, nextTimeAfter, preferencesFromSettings } from '../state/planFlow.ts';
 import type { Draft, FlowAction, FlowState, PlanOutcome } from '../state/planFlow.ts';
 import { currentLocation } from './useGeolocation.ts';
 
@@ -15,6 +17,7 @@ function returnTripResult(option: TripOption | null): PlanResult {
   return {
     candidatesConsidered: 0,
     skippedFullOrClosed: 0,
+    unroutedLots: 0,
     liveStatuses: new Map(),
     liveStatusError: null,
     options: [],
@@ -29,14 +32,16 @@ interface PlanContext {
   settings: Settings;
   dataset: ParkingDataset;
   api: PlannerApi;
-  myLocationName: string;
+  t: Translate;
 }
 
-async function runPlan(draft: Draft, context: PlanContext, onProgress: ProgressListener): Promise<PlanOutcome> {
+async function runPlan(draft: Draft, base: PlanContext, onProgress: ProgressListener): Promise<PlanOutcome> {
   if (draft.destination === null) {
     throw new Error('runPlan needs a destination');
   }
-  const origin: Place = draft.origin.kind === 'place' ? draft.origin.place : { name: context.myLocationName, location: await currentLocation() };
+  const zoneIds = base.dataset.avoidZones.map((zone) => zone.id);
+  const context = { ...base, settings: effectiveSettings(base.settings, draft.preferences, zoneIds) };
+  const origin: Place = draft.origin.kind === 'place' ? draft.origin.place : { name: context.t('myLocation'), location: await currentLocation() };
   const departure = draft.departure.kind === 'now' ? new Date() : draft.departure.time;
   const request: TripRequest = {
     origin,
@@ -56,7 +61,15 @@ async function runPlan(draft: Draft, context: PlanContext, onProgress: ProgressL
 
 /** Owns the plan state machine and re-plans automatically whenever the trip or the settings change. */
 export function usePlanFlow(context: PlanContext): [FlowState, Dispatch<FlowAction>] {
-  const [state, dispatch] = useReducer(flowReducer, context.settings.vehicle, initialFlowState);
+  const [state, dispatch] = useReducer(flowReducer, context.settings, initialFlowState);
+
+  // Settings are the defaults for the trip questions: when they change, the answers follow.
+  const firstSettings = useRef(context.settings);
+  useEffect(() => {
+    if (firstSettings.current !== context.settings) {
+      dispatch({ type: 'resetPreferences', preferences: preferencesFromSettings(context.settings) });
+    }
+  }, [context.settings]);
   const nextRequestId = useRef(1);
   const { draft, draftVersion } = state;
 
@@ -69,7 +82,13 @@ export function usePlanFlow(context: PlanContext): [FlowState, Dispatch<FlowActi
       dispatch({ type: 'planStarted', requestId });
       runPlan(draft, context, (progress) => dispatch({ type: 'planProgress', requestId, progress })).then(
         (outcome) => dispatch({ type: 'planSucceeded', requestId, outcome }),
-        (reason: Error) => dispatch({ type: 'planFailed', requestId, message: reason.message }),
+        (reason: Error) =>
+          dispatch({
+            type: 'planFailed',
+            requestId,
+            // An outage gets a plain sentence; anything else keeps its cause, for honesty.
+            message: reason instanceof ServiceUnavailableError ? context.t('serviceUnavailable') : context.t('planFailed', { error: reason.message }),
+          }),
       );
     }, AUTO_PLAN_DELAY_MS);
     return () => window.clearTimeout(timer);

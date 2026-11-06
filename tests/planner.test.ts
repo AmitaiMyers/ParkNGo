@@ -138,6 +138,33 @@ describe('planTrip', () => {
     expect(option!.legs.some((leg) => leg.isTransit)).toBe(true);
   });
 
+  it('keeps the lots that could be routed when some requests fail', async () => {
+    let calls = 0;
+    const flaky: PlannerApi = {
+      ...fakeApi,
+      streetRoute: async (from, to, vehicle, time, language) => {
+        calls++;
+        if (to.lat === paidSpot.location.lat) {
+          throw new Error('Load failed');
+        }
+        return fakeApi.streetRoute(from, to, vehicle, time, language);
+      },
+    };
+    const result = await planTrip(request, settings, [nearSpot, paidSpot], [], flaky, noProgress);
+    expect(calls).toBeGreaterThan(0);
+    expect(result.options.map((o) => o.spot!.id)).toEqual(['near']);
+    expect(result.unroutedLots).toBe(1);
+  });
+
+  it('fails with the real error only when nothing at all could be routed', async () => {
+    const down: PlannerApi = {
+      ...fakeApi,
+      streetRoute: async () => Promise.reject(new Error('Load failed')),
+      transitRoutes: async () => Promise.reject(new Error('Load failed')),
+    };
+    await expect(planTrip(request, settings, [nearSpot], [], down, noProgress)).rejects.toThrow('Load failed');
+  });
+
   it('adds a carry-on option (ride at both ends) only when requested with a bicycle or scooter', async () => {
     accessModesSeen.length = 0;
     const bikeRequest = makeRequest({ departure, vehicle: 'bicycle', carryVehicle: true });

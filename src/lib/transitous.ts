@@ -9,6 +9,9 @@ import type { Language, LatLng, Place, VehicleType } from './types.ts';
 const API_BASE_URL = 'https://api.transitous.org';
 /** Biases geocoding results towards Gush Dan (the MVP area). */
 const GEOCODE_BIAS_CENTER: LatLng = { lat: 32.08, lng: 34.8 };
+/** Only places in Israel: without this, "Rothschild 16" finds streets in France and Germany first. */
+const ISRAEL_SOUTH_WEST: LatLng = { lat: 29.45, lng: 34.2 };
+const ISRAEL_NORTH_EAST: LatLng = { lat: 33.35, lng: 35.95 };
 const GEOCODE_RESULT_COUNT = 6;
 const STREET_MATCHING_DISTANCE_METERS = 250;
 
@@ -89,14 +92,73 @@ export interface Itinerary {
 
 const STREET_LEG_MODES = new Set(['WALK', 'BIKE', 'CAR', 'CAR_PARKING', 'RENTAL']);
 
+/**
+ * The routing service could not be reached or was overloaded, even after retries. The UI shows a
+ * plain "check your connection" message for this instead of the browser's text (e.g. Safari's "Load failed").
+ */
+export class ServiceUnavailableError extends Error {
+  constructor(detail: string) {
+    super(detail);
+    this.name = 'ServiceUnavailableError';
+  }
+}
+
+/** Statuses worth retrying: rate limiting and temporary server/gateway failures. */
+const RETRYABLE_STATUSES = new Set([429, 500, 502, 503, 504]);
+/** Waits before each retry. Mobile networks drop single requests; a plan sends about a dozen. */
+const RETRY_DELAYS_MS = [600, 1500];
+/** At most this many requests in flight: kinder to a free volunteer service, and fewer drops on phones. */
+const MAX_CONCURRENT_REQUESTS = 4;
+
+const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/** A tiny FIFO semaphore for MAX_CONCURRENT_REQUESTS. */
+let inFlight = 0;
+const queue: (() => void)[] = [];
+async function withRequestSlot<T>(task: () => Promise<T>): Promise<T> {
+  if (inFlight >= MAX_CONCURRENT_REQUESTS) {
+    await new Promise<void>((resolve) => queue.push(resolve));
+  }
+  inFlight++;
+  return task().finally(() => {
+    inFlight--;
+    const next = queue.shift();
+    if (next !== undefined) {
+      next();
+    }
+  });
+}
+
+type Attempt = { kind: 'ok'; response: Response } | { kind: 'network'; message: string };
+
+/** fetch() rejects only for network-level failures (offline, dropped connection, CORS); returned as data here. */
+function attemptFetch(url: string): Promise<Attempt> {
+  return fetch(url).then(
+    (response) => ({ kind: 'ok', response }),
+    (reason: Error) => ({ kind: 'network', message: reason.message }),
+  );
+}
+
 async function getJson(path: string, params: Record<string, string>): Promise<unknown> {
   const url = `${API_BASE_URL}${path}?${new URLSearchParams(params).toString()}`;
-  const response = await fetch(url);
-  if (!response.ok) {
-    const body = await response.text();
-    throw new Error(`Routing service error ${response.status} for ${path}: ${body.slice(0, 200)}`);
-  }
-  return response.json();
+  return withRequestSlot(async () => {
+    for (let attempt = 0; ; attempt++) {
+      const result = await attemptFetch(url);
+      const retryDelay = RETRY_DELAYS_MS[attempt];
+      if (result.kind === 'ok' && result.response.ok) {
+        return result.response.json();
+      }
+      if (result.kind === 'ok' && !RETRYABLE_STATUSES.has(result.response.status)) {
+        // A real error from the service (e.g. a bad request): fail fast, no retry.
+        const body = await result.response.text();
+        throw new Error(`Routing service error ${result.response.status} for ${path}: ${body.slice(0, 200)}`);
+      }
+      if (retryDelay === undefined) {
+        throw new ServiceUnavailableError(result.kind === 'network' ? `${path}: ${result.message}` : `${path}: HTTP ${result.response.status}`);
+      }
+      await wait(retryDelay);
+    }
+  });
 }
 
 function parseLatLon(raw: Record<string, unknown>, what: string): LatLng {
@@ -170,6 +232,8 @@ export async function geocode(text: string, language: Language): Promise<Place[]
     text,
     language,
     place: formatLatLng(GEOCODE_BIAS_CENTER),
+    min: formatLatLng(ISRAEL_SOUTH_WEST),
+    max: formatLatLng(ISRAEL_NORTH_EAST),
     numResults: String(GEOCODE_RESULT_COUNT),
   });
   return requireArray(raw, 'geocode response').map((item) => {
