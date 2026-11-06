@@ -1,0 +1,63 @@
+name: Suggest a parking spot
+description: Add a free or cheap parking spot near public transport to ParkNGo.
+title: '[Parking] '
+labels: ['parking-spot']
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks! Each suggestion is reviewed and then added to `data/curated-parking.json`.
+        תודה! כל הצעה נבדקת ומתווספת לרשימת החניות.
+  - type: input
+    id: name
+    attributes:
+      label: Name / שם החניון
+      placeholder: e.g. Shapirim Park & Ride
+    validations:
+      required: true
+  - type: input
+    id: location
+    attributes:
+      label: Location (lat,lng or a Google Maps / OpenStreetMap link) / מיקום
+      placeholder: 32.0123,34.8123
+    validations:
+      required: true
+  - type: checkboxes
+    id: vehicles
+    attributes:
+      label: Suitable for / מתאים ל
+      options:
+        - label: Car / רכב
+        - label: Bicycle / אופניים
+        - label: E-scooter / קורקינט חשמלי
+  - type: dropdown
+    id: price
+    attributes:
+      label: Price / מחיר
+      options:
+        - Free / חינם
+        - Paid / בתשלום
+        - Not sure / לא בטוח
+    validations:
+      required: true
+  - type: input
+    id: daily_price
+    attributes:
+      label: Price per day in ₪ (if paid) / מחיר ליום
+  - type: input
+    id: conditions
+    attributes:
+      label: Conditions (e.g. "free with Rav-Kav", "free after 17:00") / תנאים
+  - type: input
+    id: station
+    attributes:
+      label: Nearest train / light-rail station / תחנת רכבת או רכבת קלה קרובה
+  - type: input
+    id: hours
+    attributes:
+      label: Opening hours / שעות פתיחה
+      placeholder: 24/7
+  - type: textarea
+    id: notes
+    attributes:
+      label: Notes / הערות
