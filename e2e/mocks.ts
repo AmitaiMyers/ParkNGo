@@ -28,8 +28,11 @@ export async function mockNetwork(page: Page): Promise<void> {
       return route.fulfill(json(JSON.stringify(Array.from({ length: count }, () => ({ duration: 900 })))));
     }
     if (url.pathname === '/api/v6/plan') {
-      // Street-only requests send an empty transitModes; everything else is a transit search.
-      return route.fulfill(json(fixture(url.searchParams.get('transitModes') === '' ? 'plan-drive.json' : 'plan-transit.json')));
+      // Street-only requests send an empty transitModes; a carried bike/scooter rides at both ends.
+      if (url.searchParams.get('transitModes') === '') {
+        return route.fulfill(json(fixture('plan-drive.json')));
+      }
+      return route.fulfill(json(fixture(url.searchParams.get('preTransitModes') === 'BIKE' ? 'plan-carry.json' : 'plan-transit.json')));
     }
     throw new Error(`Unmocked Transitous request: ${url.pathname}`);
   });

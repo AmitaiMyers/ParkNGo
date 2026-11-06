@@ -7,7 +7,8 @@ import { usePlanFlow } from './hooks/usePlanFlow.ts';
 import { loadDataset } from './lib/dataset.ts';
 import { makeTranslator } from './lib/i18n.ts';
 import type { PlannerApi, TripOption } from './lib/planner.ts';
-import { loadParkedVehicle, loadRecentPlaces, loadSettings, saveParkedVehicle, saveRecentPlaces, saveSettings, withRecentPlace } from './lib/storage.ts';
+import { loadParkedVehicle, loadRecentPlaces, loadSavedPlaces, loadSettings, saveParkedVehicle, saveRecentPlaces, saveSavedPlaces, saveSettings, withRecentPlace } from './lib/storage.ts';
+import type { SavedPlaceKind, SavedPlaces } from './lib/storage.ts';
 import { isNight } from './lib/sun.ts';
 import { fetchAhuzotStatuses } from './lib/telAvivParking.ts';
 import { transitousApi } from './lib/transitous.ts';
@@ -28,6 +29,7 @@ export function App() {
   const [settings, setSettings] = useState<Settings>(loadSettings);
   const [parked, setParked] = useState<ParkedVehicle | null>(loadParkedVehicle);
   const [recents, setRecents] = useState<Place[]>(loadRecentPlaces);
+  const [saved, setSaved] = useState<SavedPlaces>(loadSavedPlaces);
   const [screen, setScreen] = useState<Screen>({ kind: 'plan' });
   const [settingsOpen, setSettingsOpen] = useState(false);
   const online = useOnline();
@@ -63,6 +65,12 @@ export function App() {
     });
   }, []);
 
+  const changeSaved = (kind: SavedPlaceKind, place: Place | null) => {
+    const next = { ...saved, [kind]: place };
+    saveSavedPlaces(next);
+    setSaved(next);
+  };
+
   const replaceParked = (next: ParkedVehicle | null) => {
     saveParkedVehicle(next);
     setParked(next);
@@ -82,6 +90,7 @@ export function App() {
           dispatch={dispatch}
           settings={settings}
           dataset={dataset}
+          saved={saved}
           recents={recents}
           parked={parked}
           theme={theme}
@@ -102,7 +111,15 @@ export function App() {
           onExit={() => setScreen({ kind: 'plan' })}
         />
       )}
-      <SettingsDialog open={settingsOpen} settings={settings} dataset={dataset} onChange={changeSettings} onClose={() => setSettingsOpen(false)} />
+      <SettingsDialog
+        open={settingsOpen}
+        settings={settings}
+        dataset={dataset}
+        saved={saved}
+        onSavedChange={changeSaved}
+        onChange={changeSettings}
+        onClose={() => setSettingsOpen(false)}
+      />
     </I18nContext.Provider>
   );
 }

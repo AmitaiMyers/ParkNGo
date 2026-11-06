@@ -45,6 +45,9 @@ jobs:
       - name: End-to-end and accessibility tests (mocked network)
         run: npm run e2e
 
+      - name: Lighthouse (accessibility, best practices, SEO ≥ 95; performance reported)
+        run: npm run lighthouse
+
       - uses: actions/configure-pages@v5
 
       - uses: actions/upload-pages-artifact@v3

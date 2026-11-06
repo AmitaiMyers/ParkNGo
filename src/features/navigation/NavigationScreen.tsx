@@ -12,7 +12,9 @@ import type { Maneuver, ManeuverType } from '../../lib/maneuvers.ts';
 import type { TripOption } from '../../lib/planner.ts';
 import { streetRoute } from '../../lib/transitous.ts';
 import type { RouteLeg, TransitLine } from '../../lib/transitous.ts';
-import type { ParkedVehicle, Settings, TripRequest } from '../../lib/types.ts';
+import { splitIntoSegments } from '../../lib/segments.ts';
+import type { NavigationSegment } from '../../lib/segments.ts';
+import type { LatLng, ParkedVehicle, Settings, TripRequest } from '../../lib/types.ts';
 import { Button, LinkButton } from '../../ui/Button.tsx';
 import { googleMapsUrl, richText, spotDisplayName, useI18n, wazeUrl } from '../../ui.ts';
 import type { I18n } from '../../ui.ts';
@@ -22,7 +24,6 @@ import styles from './Navigation.module.css';
 
 const MapCanvas = lazy(() => import('../map/MapCanvas.tsx'));
 
-const VEHICLE_LEG_MODES = new Set(['CAR', 'BIKE']);
 /** Distance from the route that counts as "off route". */
 const OFF_ROUTE_METERS = 60;
 /** Consecutive off-route GPS fixes before recalculating (filters GPS jitter). */
@@ -53,12 +54,6 @@ interface Props {
   onExit: () => void;
 }
 
-function splitLegs(legs: RouteLeg[]): { vehicle: RouteLeg[]; rest: RouteLeg[] } {
-  const firstOther = legs.findIndex((leg) => !VEHICLE_LEG_MODES.has(leg.mode));
-  const split = firstOther === -1 ? legs.length : firstOther;
-  return { vehicle: legs.slice(0, split), rest: legs.slice(split) };
-}
-
 function speak(text: string, language: Settings['language']): void {
   if (!('speechSynthesis' in window)) {
     return; // Voice is optional; the banner always shows the instruction.
@@ -69,7 +64,10 @@ function speak(text: string, language: Settings['language']): void {
   window.speechSynthesis.speak(utterance);
 }
 
-function ManeuverIcon({ type }: { type: ManeuverType }) {
+function ManeuverIcon({ type, endKind }: { type: ManeuverType; endKind: SegmentEnd['kind'] }) {
+  if (type === 'arrive' && endKind !== 'parking') {
+    return <Flag className={styles.maneuverIcon} size={48} strokeWidth={2.5} aria-hidden="true" />;
+  }
   if (type === 'arrive') {
     return (
       <span className={styles.parkingIcon} aria-hidden="true">
@@ -143,33 +141,42 @@ function TransitSteps({ legs, startName, destinationName, vehicle }: { legs: Rou
   );
 }
 
-export function NavigationScreen({ option, request, settings, theme, onParked, onExit }: Props) {
-  const i18n = useI18n();
-  const { language, t } = i18n;
-  const reducedMotion = useReducedMotion();
-  const initial = useMemo(() => splitLegs(option.legs), [option]);
-  const [vehicleLegs, setVehicleLegs] = useState<RouteLeg[]>(initial.vehicle);
-  const [phase, setPhase] = useState<'vehicle' | 'transit'>(initial.vehicle.length > 0 ? 'vehicle' : 'transit');
+/** Where a segment ends and how it is named in the UI. */
+interface SegmentEnd {
+  location: LatLng;
+  name: string;
+  kind: 'parking' | 'stop' | 'destination';
+}
+
+interface StreetSegmentProps {
+  initialLegs: RouteLeg[];
+  end: SegmentEnd;
+  vehicle: TripRequest['vehicle'];
+  settings: Settings;
+  position: LatLng | null;
+  gpsError: string | null;
+  primaryLabel: string;
+  onPrimary: (position: LatLng | null) => void;
+  onRouteChange: (legs: RouteLeg[]) => void;
+  onExit: () => void;
+}
+
+/** Turn-by-turn guidance for one drive or ride segment (the first one, or the final ride of a carried vehicle). */
+function StreetSegment({ initialLegs, end, vehicle, settings, position, gpsError, primaryLabel, onPrimary, onRouteChange, onExit }: StreetSegmentProps) {
+  const { language, t } = useI18n();
+  const [legs, setLegs] = useState<RouteLeg[]>(initialLegs);
   const [rerouting, setRerouting] = useState(false);
   const [navError, setNavError] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
-  const { position, error: gpsError } = useWatchedPosition();
   const offRouteFixes = useRef(0);
   const spoken = useRef(new Set<string>());
   const banner = useRef<HTMLDivElement>(null);
 
-  const spot = option.spot;
-  const carriesVehicle = option.kind === 'carry_on';
-  const lastVehicleLeg = initial.vehicle[initial.vehicle.length - 1];
-  const boardingStop = carriesVehicle && lastVehicleLeg !== undefined ? lastVehicleLeg : null;
-  const vehicleTarget = spot !== null ? spot.location : boardingStop !== null ? boardingStop.to : request.destination.location;
-  const targetName = spot !== null ? spotDisplayName(spot, i18n) : boardingStop !== null ? boardingStop.toName : request.destination.name;
-
   const route = useMemo(() => {
-    const points = vehicleLegs.flatMap((leg) => leg.geometry);
-    const steps = vehicleLegs.flatMap((leg) => leg.steps);
+    const points = legs.flatMap((leg) => leg.geometry);
+    const steps = legs.flatMap((leg) => leg.steps);
     return { points, cumulative: cumulativeDistances(points), maneuvers: steps.length === 0 ? [] : buildManeuvers(steps) };
-  }, [vehicleLegs]);
+  }, [legs]);
 
   const totalMeters = route.cumulative[route.cumulative.length - 1]!;
   const projection = position !== null && route.points.length >= 2 ? projectOntoRoute(position, route.points, route.cumulative) : null;
@@ -178,20 +185,24 @@ export function NavigationScreen({ option, request, settings, theme, onParked, o
   const next: Maneuver | undefined = nextIndex === -1 ? undefined : route.maneuvers[nextIndex];
   const following: Maneuver | undefined = nextIndex === -1 ? undefined : route.maneuvers[nextIndex + 1];
   const distanceToNext = next === undefined ? 0 : Math.max(0, next.distanceFromStartMeters - progress);
-  const vehicleSeconds = vehicleLegs.reduce((sum, leg) => sum + leg.durationSeconds, 0);
-  const remainingSeconds = totalMeters === 0 ? 0 : vehicleSeconds * Math.max(0, 1 - progress / totalMeters);
-  const etaAtTarget = new Date(Date.now() + remainingSeconds * 1000);
+  const segmentSeconds = legs.reduce((sum, leg) => sum + leg.durationSeconds, 0);
+  const remainingSeconds = totalMeters === 0 ? 0 : segmentSeconds * Math.max(0, 1 - progress / totalMeters);
+  const etaAtEnd = new Date(Date.now() + remainingSeconds * 1000);
+  const close = next !== undefined && distanceToNext <= CLOSE_TO_TURN_METERS && position !== null;
+  /** The arrival instruction names where this segment ends (parking, boarding stop or destination). */
+  const instruction = (maneuver: Maneuver): string =>
+    maneuver.type === 'arrive' && end.kind !== 'parking' ? t('arriveAtPlace', { place: end.name }) : maneuverText(t, maneuver.type, maneuver.streetName);
 
-  // Focus the banner when navigation starts, so screen readers begin with the instruction.
+  // Screen readers start each segment at its instruction.
   useEffect(() => {
     if (banner.current !== null) {
       banner.current.focus();
     }
-  }, [phase]);
+  }, []);
 
-  // Recalculate the vehicle route after several consecutive off-route GPS fixes.
+  // Recalculate after several consecutive off-route GPS fixes.
   useEffect(() => {
-    if (phase !== 'vehicle' || position === null || rerouting || route.points.length < 2) {
+    if (position === null || rerouting || route.points.length < 2) {
       return;
     }
     const { offsetMeters } = projectOntoRoute(position, route.points, route.cumulative);
@@ -201,12 +212,13 @@ export function NavigationScreen({ option, request, settings, theme, onParked, o
     }
     offRouteFixes.current = 0;
     setRerouting(true);
-    streetRoute(position, vehicleTarget, request.vehicle, new Date(), language).then(
+    streetRoute(position, end.location, vehicle, new Date(), language).then(
       (itinerary) => {
         setRerouting(false);
         if (itinerary !== null) {
           spoken.current.clear();
-          setVehicleLegs(itinerary.legs);
+          setLegs(itinerary.legs);
+          onRouteChange(itinerary.legs);
         }
       },
       (reason: Error) => {
@@ -219,61 +231,204 @@ export function NavigationScreen({ option, request, settings, theme, onParked, o
 
   // Voice guidance: the first instruction at start, then each maneuver once when it gets close.
   useEffect(() => {
-    if (phase !== 'vehicle' || !settings.voiceGuidance || next === undefined) {
+    if (!settings.voiceGuidance || next === undefined) {
       return;
     }
     const first = route.maneuvers[0]!;
     const firstKey = `${first.distanceFromStartMeters}-${first.type}-start`;
     if (!spoken.current.has(firstKey)) {
       spoken.current.add(firstKey);
-      speak(maneuverText(t, first.type, first.streetName), language);
+      speak(instruction(first), language);
       return;
     }
     const key = `${next.distanceFromStartMeters}-${next.type}`;
-    if (position !== null && distanceToNext < ANNOUNCE_METERS[request.vehicle] && !spoken.current.has(key)) {
+    if (position !== null && distanceToNext < ANNOUNCE_METERS[vehicle] && !spoken.current.has(key)) {
       spoken.current.add(key);
-      speak(`${t('inMeters', { distance: formatDistance(language, distanceToNext) })}, ${maneuverText(t, next.type, next.streetName)}`, language);
+      speak(`${t('inMeters', { distance: formatDistance(language, distanceToNext) })}, ${instruction(next)}`, language);
     }
-  }, [phase, settings.voiceGuidance, next, distanceToNext, position, route, request.vehicle, t, language]);
+  }, [settings.voiceGuidance, next, distanceToNext, position, route, vehicle, t, language]);
 
-  const finishVehicle = () => {
+  return (
+    <>
+      <div className={styles.top}>
+        {next !== undefined && (
+          <div ref={banner} tabIndex={-1} className={styles.banner} data-close={close} role="status" aria-live="polite">
+            <ManeuverIcon type={next.type} endKind={end.kind} />
+            <div key={`${next.distanceFromStartMeters}-${next.type}`} className={styles.bannerText}>
+              <div className={styles.distance}>{position === null ? t('gpsWaiting') : formatDistance(language, distanceToNext)}</div>
+              <div className={styles.instruction}>
+                <bdi>{instruction(next)}</bdi>
+              </div>
+            </div>
+          </div>
+        )}
+        {following !== undefined && following.type !== 'arrive' && (
+          <span className={styles.then}>
+            {t('then')} <ManeuverSmall type={following.type} /> {maneuverText(t, following.type, following.streetName)}
+          </span>
+        )}
+        {rerouting && <p className={styles.notice}>{t('offRoute')}</p>}
+        {gpsError !== null && <p className={styles.notice}>{t('gpsDenied')}</p>}
+        {navError !== null && (
+          <p className={styles.notice} role="alert">
+            {navError}
+          </p>
+        )}
+      </div>
+
+      <div className={styles.bottom}>
+        <div className={styles.eta}>
+          <span className={styles.etaTime}>{formatTime(language, etaAtEnd)}</span>
+          <span className={styles.etaRest}>
+            {t('remaining', { minutes: t('minutes', { n: Math.max(1, Math.round(remainingSeconds / 60)) }), distance: formatDistance(language, Math.max(0, totalMeters - progress)) })}
+          </span>
+        </div>
+        <p className={styles.etaRest}>
+          {vehicle === 'car' ? t('stepDrive') : t('stepRide')} → <bdi>{end.name}</bdi>
+        </p>
+        <div className={styles.actions}>
+          <Button variant="primary" size="large" icon={<Check size={20} aria-hidden="true" />} onClick={() => onPrimary(position)}>
+            {primaryLabel}
+          </Button>
+          <Button variant="secondary" size="large" iconOnly icon={<Ellipsis size={22} aria-hidden="true" />} aria-expanded={menuOpen} onClick={() => setMenuOpen(!menuOpen)}>
+            {t('moreActions')}
+          </Button>
+        </div>
+        {menuOpen && (
+          <div className={styles.menu}>
+            <LinkButton variant="secondary" href={wazeUrl(end.location.lat, end.location.lng)} icon={<ExternalLink size={18} aria-hidden="true" />}>
+              {t('openInWaze')}
+            </LinkButton>
+            <LinkButton
+              variant="secondary"
+              href={googleMapsUrl(end.location.lat, end.location.lng, vehicle === 'car' ? 'driving' : 'bicycling')}
+              icon={<ExternalLink size={18} aria-hidden="true" />}
+            >
+              {t('openInGoogleMaps')}
+            </LinkButton>
+            <Button variant="ghost" onClick={onExit}>
+              {t('endNavigation')}
+            </Button>
+          </div>
+        )}
+      </div>
+    </>
+  );
+}
+
+interface TransitSegmentProps {
+  legs: RouteLeg[];
+  startName: string;
+  destination: TripRequest['destination'];
+  vehicle: TripRequest['vehicle'];
+  gpsError: string | null;
+  primaryLabel: string;
+  onPrimary: () => void;
+}
+
+/** Walks and public transport, as steps with a live countdown. */
+function TransitSegment({ legs, startName, destination, vehicle, gpsError, primaryLabel, onPrimary }: TransitSegmentProps) {
+  const i18n = useI18n();
+  const { t } = i18n;
+  const banner = useRef<HTMLDivElement>(null);
+  const nextTransitLeg = legs.find((leg) => leg.isTransit);
+
+  useEffect(() => {
+    if (banner.current !== null) {
+      banner.current.focus();
+    }
+  }, []);
+
+  return (
+    <>
+      <div className={styles.top}>
+        <div ref={banner} tabIndex={-1} className={styles.banner} role="status" aria-live="polite">
+          <Flag size={40} aria-hidden="true" />
+          <div className={styles.bannerText}>
+            <div className={styles.instruction}>{nextTransitLeg !== undefined && nextTransitLeg.line !== null ? boardText(nextTransitLeg.line, nextTransitLeg.mode, i18n) : t('stepTransit')}</div>
+          </div>
+        </div>
+        {gpsError !== null && <p className={styles.notice}>{t('gpsDenied')}</p>}
+      </div>
+      <div className={styles.bottom}>
+        <TransitSteps legs={legs} startName={startName} destinationName={destination.name} vehicle={vehicle} />
+        <div className={styles.actions}>
+          <Button variant="primary" size="large" icon={<Check size={20} aria-hidden="true" />} onClick={onPrimary}>
+            {primaryLabel}
+          </Button>
+          <LinkButton variant="secondary" size="large" iconOnly href={googleMapsUrl(destination.location.lat, destination.location.lng, 'transit')} icon={<ExternalLink size={20} aria-hidden="true" />}>
+            {t('openInGoogleMaps')}
+          </LinkButton>
+        </div>
+      </div>
+    </>
+  );
+}
+
+export function NavigationScreen({ option, request, settings, theme, onParked, onExit }: Props) {
+  const i18n = useI18n();
+  const { language, t } = i18n;
+  const reducedMotion = useReducedMotion();
+  const segments = useMemo<NavigationSegment[]>(() => splitIntoSegments(option.legs), [option]);
+  const [index, setIndex] = useState(0);
+  // The active street segment's legs change when it is re-routed; the map follows them.
+  const [activeLegs, setActiveLegs] = useState<RouteLeg[]>(segments[0]!.legs);
+  const { position, error: gpsError } = useWatchedPosition();
+
+  const segment = segments[index]!;
+  const isLast = index === segments.length - 1;
+  const spot = option.spot;
+  const carriesVehicle = option.kind === 'carry_on';
+  const spotName = spot === null ? null : spotDisplayName(spot, i18n);
+
+  /** End of a street segment: the parking spot (park & ride), the boarding stop (carried vehicle), or the destination. */
+  const streetEnd = (segmentIndex: number): SegmentEnd => {
+    const last = segments[segmentIndex]!.legs[segments[segmentIndex]!.legs.length - 1]!;
+    if (segmentIndex === segments.length - 1) {
+      return { location: request.destination.location, name: request.destination.name, kind: 'destination' };
+    }
+    return spot !== null && spotName !== null ? { location: spot.location, name: spotName, kind: 'parking' } : { location: last.to, name: last.toName, kind: 'stop' };
+  };
+
+  const goTo = (nextIndex: number) => {
+    setIndex(nextIndex);
+    setActiveLegs(segments[nextIndex]!.legs);
+  };
+
+  const finishStreet = (at: LatLng | null) => {
+    const end = streetEnd(index);
+    // A carried bicycle or scooter is never parked, so nothing is remembered for it.
     if (!carriesVehicle) {
-      onParked({ location: position === null ? vehicleTarget : position, label: targetName, savedAt: new Date().toISOString() });
+      onParked({ location: at === null ? end.location : at, label: end.name, savedAt: new Date().toISOString() });
       if ('vibrate' in navigator) {
         navigator.vibrate(15);
       }
     }
-    if (initial.rest.length === 0) {
+    if (isLast) {
       onExit();
     } else {
-      setPhase('transit');
-      setMenuOpen(false);
+      goTo(index + 1);
     }
   };
 
+  const streetLabel = isLast ? t('arrivedDone') : carriesVehicle ? t('continue') : t('iParked');
+  const transitLabel = isLast ? t('arrivedDone') : t('startRiding');
+  const previousStreet = index > 0 ? streetEnd(index - 1) : null;
+
   const mapRoutes = useMemo<MapRoute[]>(
-    () =>
-      phase === 'vehicle'
-        ? [
-            { id: 'vehicle', legs: vehicleLegs, emphasis: 'selected' },
-            { id: 'rest', legs: initial.rest, emphasis: 'faint' },
-          ]
-        : [{ id: 'rest', legs: initial.rest, emphasis: 'selected' }],
-    [phase, vehicleLegs, initial.rest],
+    () => segments.map((s, i) => ({ id: `segment-${i}`, legs: i === index ? activeLegs : s.legs, emphasis: i === index ? 'selected' : 'faint' })),
+    [segments, index, activeLegs],
   );
   const mapPoints = useMemo<MapPoint[]>(() => {
     const points: MapPoint[] = [{ id: 'destination', position: request.destination.location, kind: 'destination', emphasis: 'selected', label: request.destination.name }];
-    if (spot !== null) {
-      points.push({ id: 'parking', position: spot.location, kind: 'parking', emphasis: 'selected', label: targetName });
+    if (spot !== null && spotName !== null) {
+      points.push({ id: 'parking', position: spot.location, kind: 'parking', emphasis: 'selected', label: spotName });
     }
     if (position !== null) {
       points.push({ id: 'user', position, kind: 'user', emphasis: 'selected', label: t('myLocation') });
     }
     return points;
-  }, [request.destination, spot, targetName, position, t]);
-
-  const close = next !== undefined && distanceToNext <= CLOSE_TO_TURN_METERS && position !== null;
-  const nextTransitLeg = initial.rest.find((leg) => leg.isTransit);
+  }, [request.destination, spot, spotName, position, t]);
 
   return (
     <div className={styles.screen}>
@@ -285,99 +440,38 @@ export function NavigationScreen({ option, request, settings, theme, onParked, o
           routes={mapRoutes}
           points={mapPoints}
           follow={position}
-          fitKey={`nav-${phase}`}
+          fitKey={`nav-${index}`}
           padding={NAV_PADDING}
           reducedMotion={reducedMotion}
         />
       </Suspense>
-
-      <div className={styles.top}>
-        <h1 className="visually-hidden">{t('navigate')}</h1>
-        {phase === 'vehicle' && next !== undefined && (
-          <div ref={banner} tabIndex={-1} className={styles.banner} data-close={close} role="status" aria-live="polite">
-            <ManeuverIcon type={next.type} />
-            <div key={`${next.distanceFromStartMeters}-${next.type}`} className={styles.bannerText}>
-              <div className={styles.distance}>{position === null ? t('gpsWaiting') : formatDistance(language, distanceToNext)}</div>
-              <div className={styles.instruction}>{maneuverText(t, next.type, next.streetName)}</div>
-            </div>
-          </div>
-        )}
-        {phase === 'transit' && (
-          <div ref={banner} tabIndex={-1} className={styles.banner} role="status" aria-live="polite">
-            <Flag size={40} aria-hidden="true" />
-            <div className={styles.bannerText}>
-              <div className={styles.instruction}>{nextTransitLeg !== undefined && nextTransitLeg.line !== null ? boardText(nextTransitLeg.line, nextTransitLeg.mode, i18n) : t('stepTransit')}</div>
-            </div>
-          </div>
-        )}
-        {phase === 'vehicle' && following !== undefined && following.type !== 'arrive' && (
-          <span className={styles.then}>
-            {t('then')} <ManeuverSmall type={following.type} /> {maneuverText(t, following.type, following.streetName)}
-          </span>
-        )}
-        {rerouting && <p className={styles.notice}>{t('offRoute')}</p>}
-        {gpsError !== null && <p className={styles.notice}>{t('gpsDenied')}</p>}
-        {navError !== null && <p className={styles.notice} role="alert">{navError}</p>}
-      </div>
-
-      <div className={styles.bottom}>
-        {phase === 'vehicle' ? (
-          <>
-            <div className={styles.eta}>
-              <span className={styles.etaTime}>{formatTime(language, etaAtTarget)}</span>
-              <span className={styles.etaRest}>
-                {t('remaining', { minutes: t('minutes', { n: Math.max(1, Math.round(remainingSeconds / 60)) }), distance: formatDistance(language, Math.max(0, totalMeters - progress)) })}
-              </span>
-            </div>
-            <p className={styles.etaRest}>
-              {request.vehicle === 'car' ? t('stepDrive') : t('stepRide')} → <bdi>{targetName}</bdi>
-            </p>
-            <div className={styles.actions}>
-              <Button variant="primary" size="large" icon={<Check size={20} aria-hidden="true" />} onClick={finishVehicle}>
-                {initial.rest.length === 0 ? t('arrivedDone') : carriesVehicle ? t('continue') : t('iParked')}
-              </Button>
-              <Button variant="secondary" size="large" iconOnly icon={<Ellipsis size={22} aria-hidden="true" />} aria-expanded={menuOpen} onClick={() => setMenuOpen(!menuOpen)}>
-                {t('moreActions')}
-              </Button>
-            </div>
-            {menuOpen && (
-              <div className={styles.menu}>
-                <LinkButton variant="secondary" href={wazeUrl(vehicleTarget.lat, vehicleTarget.lng)} icon={<ExternalLink size={18} aria-hidden="true" />}>
-                  {t('openInWaze')}
-                </LinkButton>
-                <LinkButton
-                  variant="secondary"
-                  href={googleMapsUrl(vehicleTarget.lat, vehicleTarget.lng, request.vehicle === 'car' ? 'driving' : 'bicycling')}
-                  icon={<ExternalLink size={18} aria-hidden="true" />}
-                >
-                  {t('openInGoogleMaps')}
-                </LinkButton>
-                <Button variant="ghost" onClick={onExit}>
-                  {t('endNavigation')}
-                </Button>
-              </div>
-            )}
-          </>
-        ) : (
-          <>
-            <TransitSteps legs={initial.rest} startName={targetName} destinationName={request.destination.name} vehicle={request.vehicle} />
-            <div className={styles.actions}>
-              <Button variant="primary" size="large" icon={<Check size={20} aria-hidden="true" />} onClick={onExit}>
-                {t('arrivedDone')}
-              </Button>
-              <LinkButton
-                variant="secondary"
-                size="large"
-                iconOnly
-                href={googleMapsUrl(request.destination.location.lat, request.destination.location.lng, 'transit')}
-                icon={<ExternalLink size={20} aria-hidden="true" />}
-              >
-                {t('openInGoogleMaps')}
-              </LinkButton>
-            </div>
-          </>
-        )}
-      </div>
+      <h1 className="visually-hidden">{t('navigate')}</h1>
+      {segment.kind === 'street' ? (
+        <StreetSegment
+          key={index}
+          initialLegs={segment.legs}
+          end={streetEnd(index)}
+          vehicle={request.vehicle}
+          settings={settings}
+          position={position}
+          gpsError={gpsError}
+          primaryLabel={streetLabel}
+          onPrimary={finishStreet}
+          onRouteChange={setActiveLegs}
+          onExit={onExit}
+        />
+      ) : (
+        <TransitSegment
+          key={index}
+          legs={segment.legs}
+          startName={previousStreet === null ? request.origin.name : previousStreet.name}
+          destination={request.destination}
+          vehicle={request.vehicle}
+          gpsError={gpsError}
+          primaryLabel={transitLabel}
+          onPrimary={() => (isLast ? onExit() : goTo(index + 1))}
+        />
+      )}
     </div>
   );
 }

@@ -6,3 +6,4 @@ dev-dist/
 public/data/parking.json
 test-results/
 playwright-report/
+lighthouse-report.html

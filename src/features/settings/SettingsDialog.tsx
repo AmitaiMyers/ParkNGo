@@ -1,7 +1,10 @@
-import { X } from 'lucide-react';
+import { Trash2, X } from 'lucide-react';
 import { useEffect, useId, useRef } from 'react';
 import { VEHICLE_TYPES } from '../../lib/types.ts';
-import type { Language, ParkingDataset, Settings, VehicleType } from '../../lib/types.ts';
+import { SAVED_PLACE_KINDS } from '../../lib/storage.ts';
+import type { SavedPlaceKind, SavedPlaces } from '../../lib/storage.ts';
+import type { Language, ParkingDataset, Place, Settings, VehicleType } from '../../lib/types.ts';
+import { PlaceCombobox, SAVED_ICONS } from '../search/PlaceCombobox.tsx';
 import { Button } from '../../ui/Button.tsx';
 import { REPORT_SPOT_URL, useI18n } from '../../ui.ts';
 import styles from './Settings.module.css';
@@ -10,12 +13,14 @@ interface Props {
   open: boolean;
   settings: Settings;
   dataset: ParkingDataset;
+  saved: SavedPlaces;
+  onSavedChange: (kind: SavedPlaceKind, place: Place | null) => void;
   onChange: (settings: Settings) => void;
   onClose: () => void;
 }
 
 /** Native <dialog>: focus trap, Esc to close and focus return come from the browser. */
-export function SettingsDialog({ open, settings, dataset, onChange, onClose }: Props) {
+export function SettingsDialog({ open, settings, dataset, saved, onSavedChange, onChange, onClose }: Props) {
   const { language, t } = useI18n();
   const dialog = useRef<HTMLDialogElement>(null);
   const titleId = useId();
@@ -62,6 +67,49 @@ export function SettingsDialog({ open, settings, dataset, onChange, onClose }: P
         </Button>
       </div>
       <div className={styles.body}>
+        <fieldset className={styles.field}>
+          <legend>{t('savedPlaces')}</legend>
+          <p className={styles.note}>{t('savedPlacesHint')}</p>
+          {SAVED_PLACE_KINDS.map((kind) => {
+            const Icon = SAVED_ICONS[kind];
+            const place = saved[kind];
+            return (
+              <div key={kind} className={styles.savedRow}>
+                <div className={styles.savedHeader}>
+                  <Icon size={20} aria-hidden="true" />
+                  <strong>{t(kind)}</strong>
+                  {place !== null && (
+                    <>
+                      <span className={styles.savedName}>
+                        <bdi>{place.name}</bdi>
+                      </span>
+                      <Button variant="ghost" size="small" iconOnly icon={<Trash2 size={18} aria-hidden="true" />} onClick={() => onSavedChange(kind, null)}>
+                        {t('removePlace', { label: t(kind) })}
+                      </Button>
+                    </>
+                  )}
+                </div>
+                {open && (
+                  <PlaceCombobox
+                    label={t(`setPlace_${kind}`)}
+                    placeholder={t(`setPlace_${kind}`)}
+                    saved={[]}
+                    recents={[]}
+                    offerCurrentLocation={false}
+                    autoFocus={false}
+                    onChoose={(choice) => {
+                      if (choice.kind !== 'place') {
+                        throw new Error('A saved place must be an address');
+                      }
+                      onSavedChange(kind, choice.place);
+                    }}
+                  />
+                )}
+              </div>
+            );
+          })}
+        </fieldset>
+
         <div className={styles.field}>
           <label htmlFor={`${titleId}-language`}>{t('language')}</label>
           <select id={`${titleId}-language`} className={styles.control} value={settings.language} onChange={(event) => update({ language: event.target.value as Language })}>

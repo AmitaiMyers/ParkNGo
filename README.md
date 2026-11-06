@@ -17,6 +17,8 @@ Design system and UX: see [docs/DESIGN.md](docs/DESIGN.md).
 - **Auto-planning**: choose a destination and the plan starts. Changing the vehicle, time or return trip re-plans in place, with staged progress.
 - **Light / dark**: follows the system setting, and switches to dark automatically during navigation after sunset.
 - **Accessible**: WCAG 2.2 AA (axe-checked in CI), keyboard and screen-reader friendly, reduced-motion aware, Hebrew right-to-left.
+- **Home & Work**: saved on the device, one-tap trips, offered first in search.
+- **Turn-by-turn on every street segment**, including the final ride of a carried bicycle or scooter.
 
 
 - Address search in Hebrew and English. "My location" works as the start point.
@@ -60,6 +62,7 @@ npm run dev          # http://localhost:5173/ParkNGo/
 npm test             # unit tests (Vitest)
 npm run build        # type-check + production build into dist/
 npm run e2e          # end-to-end + axe accessibility tests on the build (mocked network; run `npm run build` first)
+npm run lighthouse   # Lighthouse on the build; fails if accessibility / best practices / SEO < 95 (set CHROME_PATH if needed)
 ```
 
 Requires Node ≥ 22.18, because the data script is TypeScript run directly by Node.

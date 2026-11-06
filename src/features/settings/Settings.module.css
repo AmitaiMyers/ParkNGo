@@ -87,3 +87,25 @@
   color: var(--color-text-muted);
   font: var(--text-label);
 }
+
+.savedRow {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.savedHeader {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 40px;
+}
+
+.savedName {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--color-text-muted);
+  font: var(--text-label);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

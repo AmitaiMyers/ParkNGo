@@ -1,9 +1,10 @@
 // WAI-ARIA combobox (https://www.w3.org/WAI/ARIA/apg/patterns/combobox/): recents first, then search results.
 
-import { LocateFixed, MapPin, RotateCcw, Search } from 'lucide-react';
+import { BriefcaseBusiness, House, LocateFixed, MapPin, RotateCcw, Search } from 'lucide-react';
 import { useEffect, useId, useRef, useState } from 'react';
 import type { KeyboardEvent, ReactNode } from 'react';
 import { geocode } from '../../lib/transitous.ts';
+import type { SavedPlaceKind } from '../../lib/storage.ts';
 import type { Place } from '../../lib/types.ts';
 import { useI18n } from '../../ui.ts';
 import styles from './Search.module.css';
@@ -21,9 +22,18 @@ interface Suggestion {
   icon: ReactNode;
 }
 
+export interface SavedSuggestion {
+  kind: SavedPlaceKind;
+  place: Place;
+}
+
+export const SAVED_ICONS = { home: House, work: BriefcaseBusiness } as const;
+
 interface Props {
   label: string;
   placeholder: string;
+  /** Home / Work, offered first. */
+  saved: SavedSuggestion[];
   recents: Place[];
   /** Offer "My location" as the first suggestion (for the starting point). */
   offerCurrentLocation: boolean;
@@ -31,7 +41,7 @@ interface Props {
   onChoose: (choice: ComboboxChoice) => void;
 }
 
-export function PlaceCombobox({ label, placeholder, recents, offerCurrentLocation, autoFocus, onChoose }: Props) {
+export function PlaceCombobox({ label, placeholder, saved, recents, offerCurrentLocation, autoFocus, onChoose }: Props) {
   const { language, t } = useI18n();
   const id = useId();
   const listId = `${id}-list`;
@@ -73,10 +83,17 @@ export function PlaceCombobox({ label, placeholder, recents, offerCurrentLocatio
   }, [query, language]);
 
   const lowerQuery = query.toLowerCase();
-  const matchingRecents = recents.filter((place) => query === '' || place.name.toLowerCase().includes(lowerQuery));
-  const recentNames = new Set(matchingRecents.map((place) => place.name));
+  const matches = (text: string) => query === '' || text.toLowerCase().includes(lowerQuery);
+  const matchingSaved = saved.filter((entry) => matches(t(entry.kind)) || matches(entry.place.name));
+  const savedNames = new Set(saved.map((entry) => entry.place.name));
+  const matchingRecents = recents.filter((place) => !savedNames.has(place.name) && matches(place.name));
+  const recentNames = new Set([...matchingRecents.map((place) => place.name), ...savedNames]);
   const suggestions: Suggestion[] = [
     ...(offerCurrentLocation && query === '' ? [{ key: 'current', choice: { kind: 'current' } as const, title: t('myLocation'), subtitle: null, icon: <LocateFixed size={18} aria-hidden="true" /> }] : []),
+    ...matchingSaved.map((entry) => {
+      const Icon = SAVED_ICONS[entry.kind];
+      return { key: `saved:${entry.kind}`, choice: { kind: 'place' as const, place: entry.place }, title: t(entry.kind), subtitle: entry.place.name, icon: <Icon size={18} aria-hidden="true" /> };
+    }),
     ...matchingRecents.map((place) => ({ key: `recent:${place.name}`, choice: { kind: 'place' as const, place }, title: place.name, subtitle: t('recentPlaces'), icon: <RotateCcw size={18} aria-hidden="true" /> })),
     ...results
       .filter((place) => !recentNames.has(place.name))

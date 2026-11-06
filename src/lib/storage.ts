@@ -9,6 +9,7 @@ import type { ParkedVehicle, Place, Settings } from './types.ts';
 const SETTINGS_KEY = 'parkngo.settings.v1';
 const PARKED_KEY = 'parkngo.parked.v1';
 const RECENTS_KEY = 'parkngo.recents.v1';
+const SAVED_KEY = 'parkngo.saved.v1';
 const MAX_RECENTS = 6;
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -72,15 +73,37 @@ export function saveParkedVehicle(parked: ParkedVehicle | null): void {
   }
 }
 
+export type SavedPlaceKind = 'home' | 'work';
+export const SAVED_PLACE_KINDS: readonly SavedPlaceKind[] = ['home', 'work'];
+export type SavedPlaces = Record<SavedPlaceKind, Place | null>;
+
+function parsePlace(raw: unknown, what: string): Place {
+  const place = requireObject(raw, what);
+  return { name: requireString(place['name'], `${what}.name`), location: parseLatLng(place['location'], `${what}.location`) };
+}
+
+export function loadSavedPlaces(): SavedPlaces {
+  const stored = localStorage.getItem(SAVED_KEY);
+  if (stored === null) {
+    return { home: null, work: null };
+  }
+  const raw = requireObject(JSON.parse(stored), 'stored saved places');
+  return {
+    home: raw['home'] === null ? null : parsePlace(raw['home'], 'saved home'),
+    work: raw['work'] === null ? null : parsePlace(raw['work'], 'saved work'),
+  };
+}
+
+export function saveSavedPlaces(saved: SavedPlaces): void {
+  localStorage.setItem(SAVED_KEY, JSON.stringify(saved));
+}
+
 export function loadRecentPlaces(): Place[] {
   const stored = localStorage.getItem(RECENTS_KEY);
   if (stored === null) {
     return [];
   }
-  return requireArray(JSON.parse(stored), 'stored recent places').map((raw, index) => {
-    const place = requireObject(raw, `recent place ${index}`);
-    return { name: requireString(place['name'], `recent place ${index}.name`), location: parseLatLng(place['location'], `recent place ${index}.location`) };
-  });
+  return requireArray(JSON.parse(stored), 'stored recent places').map((raw, index) => parsePlace(raw, `recent place ${index}`));
 }
 
 /** Puts `place` first in the recent list (deduplicated by name), keeping at most MAX_RECENTS. */
@@ -97,4 +120,5 @@ export function clearAllStoredData(): void {
   localStorage.removeItem(SETTINGS_KEY);
   localStorage.removeItem(PARKED_KEY);
   localStorage.removeItem(RECENTS_KEY);
+  localStorage.removeItem(SAVED_KEY);
 }

@@ -1,10 +1,11 @@
 import { Navigation2, X } from 'lucide-react';
 import { Suspense, lazy, useEffect, useMemo, useState } from 'react';
 import type { Dispatch } from 'react';
-import { useIsWide, useReducedMotion } from '../../hooks/useEnvironment.ts';
+import { useAfterIdle, useIsWide, useReducedMotion } from '../../hooks/useEnvironment.ts';
 import type { Theme } from '../../hooks/useEnvironment.ts';
 import { formatTime } from '../../lib/i18n.ts';
 import type { TripOption } from '../../lib/planner.ts';
+import type { SavedPlaces } from '../../lib/storage.ts';
 import type { ParkedVehicle, ParkingDataset, Place, Settings, TripRequest } from '../../lib/types.ts';
 import { visibleOutcome } from '../../state/planFlow.ts';
 import type { FlowAction, FlowState, PlanOutcome } from '../../state/planFlow.ts';
@@ -26,6 +27,7 @@ interface Props {
   dispatch: Dispatch<FlowAction>;
   settings: Settings;
   dataset: ParkingDataset;
+  saved: SavedPlaces;
   recents: Place[];
   parked: ParkedVehicle | null;
   theme: Theme;
@@ -97,11 +99,12 @@ function ParkedCard({ parked, onReturn, onClear }: { parked: ParkedVehicle; onRe
 }
 
 export function PlanScreen(props: Props) {
-  const { state, dispatch, settings, dataset, recents, parked, theme, online, onPlaceChosen, onSettingsChange, onOpenSettings, onStart, onClearParked } = props;
+  const { state, dispatch, settings, dataset, saved, recents, parked, theme, online, onPlaceChosen, onSettingsChange, onOpenSettings, onStart, onClearParked } = props;
   const i18n = useI18n();
   const { language, t } = i18n;
   const isWide = useIsWide();
   const reducedMotion = useReducedMotion();
+  const mapReady = useAfterIdle();
   const [snap, setSnap] = useState<SnapPoint>('peek');
   const outcome = visibleOutcome(state.status);
   const hasTrip = state.draft.destination !== null;
@@ -126,6 +129,7 @@ export function PlanScreen(props: Props) {
   const search = (
     <SearchCard
       draft={state.draft}
+      saved={saved}
       recents={recents}
       placement={isWide ? 'embedded' : 'floating'}
       online={online}
@@ -138,9 +142,13 @@ export function PlanScreen(props: Props) {
   return (
     <div className={styles.screen}>
       <h1 className="visually-hidden">{t('appName')}</h1>
-      <Suspense fallback={<div className={styles.mapFallback} />}>
-        <MapCanvas theme={theme} language={language} label={t('mapLabel')} routes={map.routes} points={map.points} follow={null} fitKey={fitKey} padding={padding} reducedMotion={reducedMotion} />
-      </Suspense>
+      {mapReady ? (
+        <Suspense fallback={<div className={styles.mapFallback} />}>
+          <MapCanvas theme={theme} language={language} label={t('mapLabel')} routes={map.routes} points={map.points} follow={null} fitKey={fitKey} padding={padding} reducedMotion={reducedMotion} />
+        </Suspense>
+      ) : (
+        <div className={styles.mapFallback} />
+      )}
       {!isWide && search}
       <Sheet label={t('sheetLabel')} handleLabel={t(`sheet_${snap}`)} snap={snap} onSnapChange={setSnap}>
         <div className={styles.content}>

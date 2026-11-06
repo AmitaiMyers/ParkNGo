@@ -53,3 +53,25 @@ export function useTheme(forceDark: boolean): Theme {
   }, [theme]);
   return theme;
 }
+
+/** Max wait for an idle moment before mounting deferred work anyway. */
+const IDLE_TIMEOUT_MS = 1500;
+
+/**
+ * True once the browser has been idle after first paint. Used to start the (heavy) map only after the
+ * search field is interactive, so the first tap or keystroke never waits for map setup.
+ */
+export function useAfterIdle(): boolean {
+  const [ready, setReady] = useState(false);
+  useEffect(() => {
+    // The DOM types claim requestIdleCallback always exists, but Safari does not have it.
+    const requestIdle = window.requestIdleCallback as typeof window.requestIdleCallback | undefined;
+    if (requestIdle === undefined) {
+      const timer = window.setTimeout(() => setReady(true), 200);
+      return () => window.clearTimeout(timer);
+    }
+    const handle = requestIdle(() => setReady(true), { timeout: IDLE_TIMEOUT_MS });
+    return () => window.cancelIdleCallback(handle);
+  }, []);
+  return ready;
+}

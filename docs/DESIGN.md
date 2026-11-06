@@ -320,8 +320,25 @@ names inside sentences.
 | Hebrew "קורקינט חשמלי" | **"קורקינט"** | The full label wrapped in the segmented control at 390 px |
 | — | Singular forms (`_one` keys) | "1 lots skipped" and "1 transfers" read wrong |
 
-**Not built yet:** saved Home / Work places (only recents for now), a Lighthouse score run (not measured in this
-environment), and turn-by-turn guidance for the final ride leg of a carried bicycle or scooter (it shows as a step).
+**Added after Phase 2:**
+- **Saved Home & Work:** stored on the device and edited in Settings. They appear as one-tap chips ("Add Home & Work" while
+  empty) and first in both search fields.
+- **Turn-by-turn for every street segment:** navigation is a sequence of segments (`src/lib/segments.ts`: drive/ride →
+  transit → ride). A carried bicycle or scooter gets full guidance on its final ride too, and arrival instructions name
+  the real end point (parking, boarding stop or destination).
+- **Lighthouse** (`npm run lighthouse`, also in CI). Mobile emulation, measured on the production build:
+
+| Category | Score | Note |
+|---|---|---|
+| Accessibility | **100** | gated ≥ 95 |
+| Best Practices | **100** | gated ≥ 95 |
+| SEO | **100** | gated ≥ 95 |
+| Performance | **70** | reported only. FCP 1.0 s, LCP 2.0 s, CLS 0, TBT ≈ 2.4 s |
+
+  The blocking time is MapLibre drawing vector tiles. The test machine has no GPU, so WebGL runs in software on the CPU.
+  With the tile server blocked, the same build scores **99** (TBT 60 ms). Changes made for this: the map mounts when the
+  browser is idle after first paint (LCP 4.0 → 2.0 s), the label fade is off, and the pixel ratio is capped at 2.
+  Real-device (GPU) performance has not been measured.
 
 **Quality gates (all passing):** 67 unit tests (Vitest), including the state machine, sheet snapping, sunrise/sunset,
 the why-line, singular forms and bidi parts; 9 Playwright tests with mocked network (full journey, Hebrew RTL,

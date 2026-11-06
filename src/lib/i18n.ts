@@ -6,6 +6,16 @@ import type { ManeuverType } from './maneuvers.ts';
 
 const en = {
   appName: 'ParkNGo',
+  startRiding: 'Start riding',
+  home: 'Home',
+  work: 'Work',
+  savedPlaces: 'Home & Work',
+  savedPlacesHint: 'Saved on this device only. They appear first when you search.',
+  setPlace_home: 'Search for your home address',
+  setPlace_work: 'Search for your work address',
+  removePlace: 'Remove {label}',
+  addHomeWork: 'Add Home & Work',
+  arriveAtPlace: 'Arrive at {place}',
   // Singular forms: used automatically when the message's {n} is 1.
   transfers_one: '1 transfer',
   skippedFull_one: '1 lot skipped because it is full or closed right now',
@@ -189,6 +199,16 @@ export type MessageKey = keyof typeof en;
 
 const he: Record<MessageKey, string> = {
   appName: 'ParkNGo',
+  startRiding: 'התחלת רכיבה',
+  home: 'בית',
+  work: 'עבודה',
+  savedPlaces: 'בית ועבודה',
+  savedPlacesHint: 'נשמרים במכשיר הזה בלבד ומופיעים ראשונים בחיפוש.',
+  setPlace_home: 'חיפוש כתובת הבית',
+  setPlace_work: 'חיפוש כתובת העבודה',
+  removePlace: 'הסרת {label}',
+  addHomeWork: 'הוספת בית ועבודה',
+  arriveAtPlace: 'הגעתם אל {place}',
   transfers_one: 'החלפה אחת',
   skippedFull_one: 'דילגנו על חניון אחד שמלא או סגור כרגע',
   candidates_one: 'נבדקה חניה אחת',

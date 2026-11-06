@@ -171,6 +171,10 @@ export default function MapCanvas({ theme, language, label, routes, points, foll
       attributionControl: { compact: true },
       dragRotate: false,
       pitchWithRotate: false,
+      // No label cross-fade: avoids ~300 ms of continuous repainting after every camera move.
+      fadeDuration: 0,
+      // Beyond 2× the extra pixels are invisible but cost GPU time.
+      pixelRatio: Math.min(window.devicePixelRatio, 2),
     });
     map.touchZoomRotate.disableRotation();
     map.on('style.load', () => setStyleVersion((v) => v + 1));

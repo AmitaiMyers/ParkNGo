@@ -11,7 +11,8 @@
     "preview": "vite preview",
     "test": "vitest run",
     "build:data": "node scripts/build-parking-data.ts",
-    "e2e": "playwright test -c e2e/playwright.config.ts"
+    "e2e": "playwright test -c e2e/playwright.config.ts",
+    "lighthouse": "node scripts/lighthouse.ts"
   },
   "repository": {
     "type": "git",
@@ -36,6 +37,8 @@
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.2.1",
     "axe-core": "^4.14.0",
+    "chrome-launcher": "^1.2.3",
+    "lighthouse": "^13.6.0",
     "typescript": "^7.0.2",
     "vite": "^8.3.6",
     "vite-plugin-pwa": "^2.0.0",
