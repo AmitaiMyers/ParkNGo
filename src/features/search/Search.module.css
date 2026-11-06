@@ -1,0 +1,222 @@
+.card {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-2);
+}
+
+/* On phones the card floats over the map; in the side panel it sits at the top. */
+.floating {
+  position: fixed;
+  top: max(var(--space-3), env(safe-area-inset-top));
+  inset-inline: var(--space-3);
+  z-index: 30;
+}
+
+.embedded {
+  box-shadow: none;
+  border: 1px solid var(--color-border);
+}
+
+.topRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  min-height: 40px;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font: var(--text-heading);
+}
+
+.brand img {
+  border-radius: 8px;
+}
+
+.originButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 40px;
+  max-width: 100%;
+  padding-inline: var(--space-2);
+  border: none;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--color-text-muted);
+  font: var(--text-label);
+  cursor: pointer;
+}
+
+.originButton strong {
+  overflow: hidden;
+  color: var(--color-primary);
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fieldRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.recents {
+  display: flex;
+  gap: var(--space-2);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.pill {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 4px;
+  border-radius: var(--radius-pill);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-2);
+}
+
+.pillText {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  min-height: 44px;
+  padding-inline: var(--space-3);
+  border: none;
+  border-radius: var(--radius-pill);
+  background: none;
+  font: var(--text-label);
+  text-align: start;
+  cursor: pointer;
+}
+
+.pillText span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.offline {
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  background: var(--color-warning-subtle);
+  color: var(--color-warning);
+  font: var(--text-label);
+}
+
+/* ---- combobox ---- */
+.combobox {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+}
+
+.inputWrap {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--target-min);
+  padding-inline: var(--space-3);
+  border: 1px solid var(--color-border-control);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-2);
+  color: var(--color-text-muted);
+}
+
+.inputWrap:focus-within {
+  outline: 3px solid var(--color-focus);
+  outline-offset: 2px;
+}
+
+.input {
+  flex: 1;
+  min-width: 0;
+  min-height: 44px;
+  border: none;
+  background: none;
+  color: var(--color-text);
+  font: var(--text-body);
+  outline: none;
+}
+
+.input::placeholder {
+  color: var(--color-text-muted);
+}
+
+.listbox {
+  position: absolute;
+  top: calc(100% + 6px);
+  inset-inline: 0;
+  z-index: 40;
+  display: grid;
+  gap: 2px;
+  max-height: min(50dvh, 360px);
+  margin: 0;
+  padding: 4px;
+  overflow-y: auto;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-3);
+  list-style: none;
+  animation: rise-in var(--motion-base) var(--ease-emphasized);
+}
+
+.option {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-height: var(--target-min);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  color: var(--color-text);
+  cursor: pointer;
+}
+
+.option[aria-selected='true'] {
+  background: var(--color-primary-subtle);
+  color: var(--color-on-primary-subtle);
+}
+
+@media (hover: hover) {
+  .option:hover:not([aria-selected='true']) {
+    background: var(--color-surface-2);
+  }
+}
+
+.optionText {
+  display: grid;
+  min-width: 0;
+}
+
+.optionText span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.optionText small {
+  color: var(--color-text-muted);
+  font: var(--text-caption);
+}
+
+.option[aria-selected='true'] small {
+  color: inherit;
+}
+
+.hint {
+  padding: var(--space-3);
+  color: var(--color-text-muted);
+  font: var(--text-label);
+}

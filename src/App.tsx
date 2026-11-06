@@ -1,127 +1,108 @@
-import { use, useEffect, useMemo, useState } from 'react';
+import { use, useCallback, useEffect, useMemo, useState } from 'react';
+import { NavigationScreen } from './features/navigation/NavigationScreen.tsx';
+import { PlanScreen } from './features/plan/PlanScreen.tsx';
+import { SettingsDialog } from './features/settings/SettingsDialog.tsx';
+import { useNow, useOnline, useTheme } from './hooks/useEnvironment.ts';
+import { usePlanFlow } from './hooks/usePlanFlow.ts';
 import { loadDataset } from './lib/dataset.ts';
 import { makeTranslator } from './lib/i18n.ts';
-import { planTrip } from './lib/planner.ts';
-import type { PlanResult, PlannerApi, TripOption } from './lib/planner.ts';
+import type { PlannerApi, TripOption } from './lib/planner.ts';
+import { loadParkedVehicle, loadRecentPlaces, loadSettings, saveParkedVehicle, saveRecentPlaces, saveSettings, withRecentPlace } from './lib/storage.ts';
+import { isNight } from './lib/sun.ts';
 import { fetchAhuzotStatuses } from './lib/telAvivParking.ts';
-import { loadParkedVehicle, loadSettings, saveParkedVehicle, saveSettings } from './lib/storage.ts';
 import { transitousApi } from './lib/transitous.ts';
-import type { ParkedVehicle, Settings, TripRequest } from './lib/types.ts';
-import { I18nContext, googleMapsUrl } from './ui.ts';
+import type { ParkedVehicle, Place, Settings, TripRequest } from './lib/types.ts';
+import { useToast } from './ui/Toast.tsx';
+import { I18nContext } from './ui.ts';
 import type { I18n } from './ui.ts';
-import { NavigationView } from './components/NavigationView.tsx';
-import { ResultsView } from './components/ResultsView.tsx';
-import { SettingsView } from './components/SettingsView.tsx';
-import { TripForm } from './components/TripForm.tsx';
 
 const plannerApi: PlannerApi = { ...transitousApi, lotStatuses: fetchAhuzotStatuses };
 
 // Loaded once per page; errors surface through the ErrorBoundary via React's `use`.
 const datasetPromise = loadDataset();
 
-type Screen = { name: 'plan' } | { name: 'settings' } | { name: 'navigate'; option: TripOption; request: TripRequest };
-
-type Planning =
-  | { status: 'idle' }
-  | { status: 'busy' }
-  | { status: 'done'; request: TripRequest; result: PlanResult }
-  | { status: 'error'; message: string };
+type Screen = { kind: 'plan' } | { kind: 'navigate'; option: TripOption; request: TripRequest };
 
 export function App() {
   const dataset = use(datasetPromise);
   const [settings, setSettings] = useState<Settings>(loadSettings);
   const [parked, setParked] = useState<ParkedVehicle | null>(loadParkedVehicle);
-  const [screen, setScreen] = useState<Screen>({ name: 'plan' });
-  const [planning, setPlanning] = useState<Planning>({ status: 'idle' });
+  const [recents, setRecents] = useState<Place[]>(loadRecentPlaces);
+  const [screen, setScreen] = useState<Screen>({ kind: 'plan' });
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const online = useOnline();
+  const showToast = useToast();
 
   const i18n = useMemo<I18n>(() => ({ language: settings.language, t: makeTranslator(settings.language) }), [settings.language]);
   const { t } = i18n;
 
-  // Each screen starts at the top (otherwise navigation opens scrolled down from the results list).
-  useEffect(() => {
-    window.scrollTo(0, 0);
-  }, [screen]);
+  // Memoized: a new object would make usePlanFlow re-plan on every render.
+  const planContext = useMemo(() => ({ settings, dataset, api: plannerApi, myLocationName: t('myLocation') }), [settings, dataset, t]);
+  const [flow, dispatch] = usePlanFlow(planContext);
+
+  // Dark during navigation after sunset (checked every minute), otherwise follow the system.
+  const now = useNow(60_000);
+  const navigatingAtNight = screen.kind === 'navigate' && isNight(now, screen.request.origin.location);
+  const theme = useTheme(navigatingAtNight);
 
   useEffect(() => {
     document.documentElement.lang = settings.language;
     document.documentElement.dir = settings.language === 'he' ? 'rtl' : 'ltr';
   }, [settings.language]);
 
-  const changeSettings = (next: Settings) => {
+  const changeSettings = useCallback((next: Settings) => {
     saveSettings(next);
     setSettings(next);
-  };
+  }, []);
 
-  const changeParked = (next: ParkedVehicle | null) => {
+  const rememberPlace = useCallback((place: Place) => {
+    setRecents((current) => {
+      const next = withRecentPlace(current, place);
+      saveRecentPlaces(next);
+      return next;
+    });
+  }, []);
+
+  const replaceParked = (next: ParkedVehicle | null) => {
     saveParkedVehicle(next);
     setParked(next);
   };
 
-  const plan = (request: TripRequest) => {
-    setPlanning({ status: 'busy' });
-    planTrip(request, settings, dataset.spots, dataset.avoidZones, plannerApi).then(
-      (result) => setPlanning({ status: 'done', request, result }),
-      (reason: Error) => setPlanning({ status: 'error', message: reason.message }),
-    );
+  const parkWithUndo = (next: ParkedVehicle) => {
+    const previous = parked;
+    replaceParked(next);
+    showToast({ message: t('parkingSaved', { label: next.label }), action: { label: t('undo'), onAction: () => replaceParked(previous) } });
   };
 
   return (
     <I18nContext.Provider value={i18n}>
-      <header className="app-header">
-        <button type="button" className="brand" onClick={() => setScreen({ name: 'plan' })}>
-          <img src={`${import.meta.env.BASE_URL}icons/icon.svg`} alt="" width={28} height={28} />
-          ParkNGo
-        </button>
-        {screen.name === 'plan' ? (
-          <button type="button" className="secondary" onClick={() => setScreen({ name: 'settings' })}>
-            ⚙ {t('settings')}
-          </button>
-        ) : (
-          <button type="button" className="secondary" onClick={() => setScreen({ name: 'plan' })}>
-            {t('back')}
-          </button>
-        )}
-      </header>
-
-      <main>
-        {screen.name === 'plan' && (
-          <>
-            <p className="tagline">{t('appTagline')}</p>
-            {parked !== null && (
-              <div className="card parked">
-                <span>🅿 {t('parkedBanner', { label: parked.label })}</span>
-                <div className="row wrap">
-                  <a className="button secondary" href={googleMapsUrl(parked.location.lat, parked.location.lng, 'transit')} target="_blank" rel="noreferrer">
-                    {t('navigateToVehicle')}
-                  </a>
-                  <button type="button" className="link" onClick={() => changeParked(null)}>
-                    {t('forgetParking')}
-                  </button>
-                </div>
-              </div>
-            )}
-            <TripForm settings={settings} busy={planning.status === 'busy'} onPlan={plan} />
-            {planning.status === 'error' && <p className="error-text">{planning.message}</p>}
-            {planning.status === 'done' && (
-              <ResultsView
-                key={planning.result.options.map((o) => o.id).join('|')}
-                result={planning.result}
-                request={planning.request}
-                settings={settings}
-                onNavigate={(option) => setScreen({ name: 'navigate', option, request: planning.request })}
-              />
-            )}
-          </>
-        )}
-
-        {screen.name === 'settings' && <SettingsView settings={settings} dataset={dataset} onChange={changeSettings} />}
-
-        {screen.name === 'navigate' && (
-          <NavigationView option={screen.option} request={screen.request} settings={settings} onParked={changeParked} onExit={() => setScreen({ name: 'plan' })} />
-        )}
-      </main>
-
-      <footer className="muted small">{t('attribution')}</footer>
+      {screen.kind === 'plan' ? (
+        <PlanScreen
+          state={flow}
+          dispatch={dispatch}
+          settings={settings}
+          dataset={dataset}
+          recents={recents}
+          parked={parked}
+          theme={theme}
+          online={online}
+          onPlaceChosen={rememberPlace}
+          onSettingsChange={changeSettings}
+          onOpenSettings={() => setSettingsOpen(true)}
+          onStart={(option, request) => setScreen({ kind: 'navigate', option, request })}
+          onClearParked={() => replaceParked(null)}
+        />
+      ) : (
+        <NavigationScreen
+          option={screen.option}
+          request={screen.request}
+          settings={settings}
+          theme={theme}
+          onParked={parkWithUndo}
+          onExit={() => setScreen({ kind: 'plan' })}
+        />
+      )}
+      <SettingsDialog open={settingsOpen} settings={settings} dataset={dataset} onChange={changeSettings} onClose={() => setSettingsOpen(false)} />
     </I18nContext.Provider>
   );
 }

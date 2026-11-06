@@ -1,0 +1,41 @@
+.host {
+  position: fixed;
+  inset-inline: 0;
+  bottom: max(var(--space-4), env(safe-area-inset-bottom));
+  z-index: 100;
+  display: grid;
+  justify-items: center;
+  padding-inline: var(--space-4);
+  pointer-events: none;
+}
+
+.toast {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  max-width: 480px;
+  padding: 6px 6px 6px var(--space-4);
+  border-radius: var(--radius-md);
+  background: var(--color-toast-bg);
+  color: var(--color-toast-text);
+  box-shadow: var(--shadow-3);
+  font: var(--text-label);
+  pointer-events: auto;
+  animation: rise-in var(--motion-slow) var(--ease-emphasized);
+}
+
+[dir='rtl'] .toast {
+  padding: 6px var(--space-4) 6px 6px;
+}
+
+.action {
+  min-height: 40px;
+  padding-inline: var(--space-3);
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-toast-action);
+  font: var(--text-label);
+  font-weight: 600;
+  cursor: pointer;
+}

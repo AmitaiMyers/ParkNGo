@@ -1,0 +1,135 @@
+/* Skeleton, progress steps and live status — the "the app is working" family. */
+.skeleton {
+  border-radius: var(--radius-lg);
+  background: linear-gradient(90deg, var(--color-surface-2) 25%, var(--color-surface) 50%, var(--color-surface-2) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s linear infinite;
+}
+
+.steps {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.step {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--color-text-muted);
+  font: var(--text-label);
+  transition: color var(--motion-base) var(--ease-standard);
+}
+
+.step[data-state='active'],
+.step[data-state='done'] {
+  color: var(--color-text);
+}
+
+.tick {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border: 2px solid var(--color-border-control);
+  border-radius: 50%;
+  transition:
+    background-color var(--motion-base) var(--ease-standard),
+    border-color var(--motion-base) var(--ease-standard);
+}
+
+.step[data-state='active'] .tick {
+  border-color: var(--color-primary);
+  border-inline-end-color: transparent;
+  animation: spin 800ms linear infinite;
+}
+
+.step[data-state='done'] .tick {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+  color: var(--color-on-primary);
+}
+
+.live {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font: var(--text-label);
+}
+
+.available { color: var(--color-success); }
+.few { color: var(--color-warning); }
+.full,
+.closed { color: var(--color-danger); }
+.open_no_count,
+.no_data { color: var(--color-text-muted); }
+
+.dot {
+  position: relative;
+  width: 10px;
+  height: 10px;
+  flex: none;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+/* "Spaces available" pulses three times after appearing, then stays still. */
+.available .dot::after {
+  content: '';
+  position: absolute;
+  inset: -4px;
+  border: 2px solid currentColor;
+  border-radius: 50%;
+  opacity: 0;
+  animation: pulse 2s var(--ease-standard) 3;
+}
+
+@keyframes pulse {
+  from { transform: scale(0.6); opacity: 0.7; }
+  to { transform: scale(1.6); opacity: 0; }
+}
+
+/* Shapes differ, so the state never depends on color alone: ● ◐ ✕ ○ */
+.few .dot {
+  border: 2px solid currentColor;
+  background: linear-gradient(90deg, currentColor 50%, transparent 50%);
+}
+
+.open_no_count .dot,
+.no_data .dot {
+  border: 2px solid currentColor;
+  background: transparent;
+}
+
+.full .dot,
+.closed .dot {
+  background: transparent;
+}
+
+.full .dot::before,
+.full .dot::after,
+.closed .dot::before,
+.closed .dot::after {
+  content: '';
+  position: absolute;
+  top: -1px;
+  inset-inline-start: 4px;
+  width: 2.5px;
+  height: 12px;
+  border-radius: 2px;
+  background: currentColor;
+  transform: rotate(45deg);
+}
+
+.full .dot::after,
+.closed .dot::after {
+  transform: rotate(-45deg);
+}
+
+.updated {
+  color: var(--color-text-muted);
+  font: var(--text-caption);
+}

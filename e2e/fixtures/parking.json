@@ -1,0 +1,190 @@
+{
+ "generatedAt": "2026-11-06T12:00:00Z",
+ "attribution": "e2e fixture",
+ "spots": [
+  {
+   "id": "osm:way/1",
+   "name": "Kiryat Arye lot",
+   "nameEn": null,
+   "location": {
+    "lat": 32.101036,
+    "lng": 34.846378
+   },
+   "source": "osm",
+   "vehicleTypes": [
+    "car"
+   ],
+   "price": {
+    "type": "free"
+   },
+   "priceNote": null,
+   "capacity": null,
+   "openingHours": null,
+   "isParkAndRide": false,
+   "liveStatus": null,
+   "nearestStation": {
+    "name": "Kiryat Arye",
+    "distanceMeters": 180,
+    "location": {
+     "lat": 32.1055,
+     "lng": 34.8625
+    }
+   }
+  },
+  {
+   "id": "osm:way/2",
+   "name": "Glilot Park & Ride",
+   "nameEn": null,
+   "location": {
+    "lat": 32.145,
+    "lng": 34.81
+   },
+   "source": "osm",
+   "vehicleTypes": [
+    "car"
+   ],
+   "price": {
+    "type": "paid",
+    "dailyIls": 12
+   },
+   "priceNote": null,
+   "capacity": null,
+   "openingHours": null,
+   "isParkAndRide": true,
+   "liveStatus": null,
+   "nearestStation": {
+    "name": "Kiryat Arye",
+    "distanceMeters": 180,
+    "location": {
+     "lat": 32.1055,
+     "lng": 34.8625
+    }
+   }
+  },
+  {
+   "id": "tlv-ahuzot:10",
+   "name": "Basel (full)",
+   "nameEn": null,
+   "location": {
+    "lat": 32.115,
+    "lng": 34.84
+   },
+   "source": "tlv-ahuzot",
+   "vehicleTypes": [
+    "car"
+   ],
+   "price": {
+    "type": "paid",
+    "dailyIls": null
+   },
+   "priceNote": null,
+   "capacity": null,
+   "openingHours": null,
+   "isParkAndRide": false,
+   "liveStatus": {
+    "provider": "tlv-ahuzot",
+    "lotCode": 10
+   },
+   "nearestStation": {
+    "name": "Kiryat Arye",
+    "distanceMeters": 180,
+    "location": {
+     "lat": 32.1055,
+     "lng": 34.8625
+    }
+   }
+  },
+  {
+   "id": "tlv-ahuzot:11",
+   "name": "Nordau",
+   "nameEn": null,
+   "location": {
+    "lat": 32.12,
+    "lng": 34.845
+   },
+   "source": "tlv-ahuzot",
+   "vehicleTypes": [
+    "car"
+   ],
+   "price": {
+    "type": "paid",
+    "dailyIls": null
+   },
+   "priceNote": null,
+   "capacity": null,
+   "openingHours": null,
+   "isParkAndRide": false,
+   "liveStatus": {
+    "provider": "tlv-ahuzot",
+    "lotCode": 11
+   },
+   "nearestStation": {
+    "name": "Kiryat Arye",
+    "distanceMeters": 180,
+    "location": {
+     "lat": 32.1055,
+     "lng": 34.8625
+    }
+   }
+  },
+  {
+   "id": "osm:node/3",
+   "name": "Station bike racks",
+   "nameEn": null,
+   "location": {
+    "lat": 32.101,
+    "lng": 34.846
+   },
+   "source": "osm",
+   "vehicleTypes": [
+    "bicycle",
+    "scooter"
+   ],
+   "price": {
+    "type": "free"
+   },
+   "priceNote": null,
+   "capacity": null,
+   "openingHours": null,
+   "isParkAndRide": false,
+   "liveStatus": null,
+   "nearestStation": {
+    "name": "Kiryat Arye",
+    "distanceMeters": 180,
+    "location": {
+     "lat": 32.1055,
+     "lng": 34.8625
+    }
+   }
+  }
+ ],
+ "avoidZones": [
+  {
+   "id": "tel-aviv-yafo",
+   "name": {
+    "en": "Tel Aviv-Yafo",
+    "he": "תל אביב-יפו"
+   },
+   "rings": [
+    [
+     {
+      "lat": 32.03,
+      "lng": 34.74
+     },
+     {
+      "lat": 32.03,
+      "lng": 34.8
+     },
+     {
+      "lat": 32.09,
+      "lng": 34.8
+     },
+     {
+      "lat": 32.09,
+      "lng": 34.74
+     }
+    ]
+   ]
+  }
+ ]
+}

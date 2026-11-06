@@ -1,0 +1,28 @@
+.strip {
+  display: flex;
+  gap: 3px;
+  height: 28px;
+}
+
+.leg {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  min-width: 36px;
+  padding-inline: 4px;
+  border-radius: 6px;
+  color: var(--color-surface);
+  font: var(--text-caption);
+  font-variant-numeric: tabular-nums;
+}
+
+.vehicle { background: var(--mode-vehicle); color: var(--color-on-primary); }
+.rail { background: var(--mode-rail); }
+.lrt { background: var(--mode-lrt); }
+.bus { background: var(--mode-bus); }
+.walk {
+  border: 2px dotted var(--mode-walk);
+  background: transparent;
+  color: var(--color-text-muted);
+}

@@ -1,0 +1,142 @@
+/*
+ * ParkNGo design tokens (docs/DESIGN.md §1–2). Every text/background pair below was
+ * measured against WCAG 2.2 AA. Components use these tokens only — never literal colors.
+ *
+ * Theme: light by default; `.theme-dark` on <html> (set by useTheme from the system setting,
+ * or at night during navigation) redefines the color tokens. One definition, no duplication.
+ */
+:root {
+  /* color — surfaces & text */
+  --color-bg: #f5f7f8;
+  --color-surface: #ffffff;
+  --color-surface-2: #eef2f4;
+  --color-text: #0e1a22;
+  --color-text-muted: #4b5b67;
+  --color-border: #d5dde2; /* decorative dividers only */
+  --color-border-control: #7d8b95; /* 3.5:1 — input & control outlines */
+  --color-scrim: rgb(14 26 34 / 0.4);
+
+  /* color — brand & meaning */
+  --color-primary: #0b6e66;
+  --color-primary-hover: #095a54;
+  --color-on-primary: #ffffff;
+  --color-primary-subtle: #d7f3ee;
+  --color-on-primary-subtle: #064b45;
+  --color-accent: #f5b700; /* parking amber */
+  --color-on-accent: #2a1e00;
+  --color-secondary: #3b3fc4;
+  --color-on-secondary: #ffffff;
+  --color-success: #157a3f;
+  --color-warning: #9a5b00;
+  --color-warning-subtle: #fdf0d5;
+  --color-danger: #b4232a;
+  --color-danger-subtle: #fbe3e4;
+  --color-focus: #0b6e66;
+  --color-user-location: #2f80ff; /* 3.7:1 on the light map */
+  --color-user-location-halo: rgb(47 128 255 / 0.25);
+  --color-toast-bg: #0e1a22;
+  --color-toast-text: #f5f7f8;
+  --color-toast-action: #ffc933;
+
+  /* route modes (always paired with icon + label) */
+  --mode-vehicle: #0b6e66;
+  --mode-walk: #6b7a86;
+  --mode-rail: #2563eb;
+  --mode-lrt: #b0249e;
+  --mode-bus: #15803d;
+  --map-casing: #ffffff;
+
+  /* elevation */
+  --shadow-1: 0 1px 2px rgb(14 26 34 / 0.08), 0 1px 1px rgb(14 26 34 / 0.04);
+  --shadow-2: 0 8px 24px rgb(14 26 34 / 0.14), 0 2px 6px rgb(14 26 34 / 0.06);
+  --shadow-3: 0 16px 40px rgb(14 26 34 / 0.22);
+
+  /* typography */
+  --font-ui: 'Rubik Variable', system-ui, 'Segoe UI', Arial, sans-serif;
+  --text-display: 650 1.75rem/2.125rem var(--font-ui);
+  --text-title: 600 1.375rem/1.75rem var(--font-ui);
+  --text-heading: 600 1.125rem/1.5rem var(--font-ui);
+  --text-body: 400 1rem/1.5rem var(--font-ui);
+  --text-body-strong: 500 1rem/1.5rem var(--font-ui);
+  --text-label: 500 0.875rem/1.25rem var(--font-ui);
+  --text-caption: 500 0.75rem/1rem var(--font-ui);
+  --text-nav-distance: 700 2.5rem/2.75rem var(--font-ui);
+  --text-nav-instruction: 600 1.375rem/1.75rem var(--font-ui);
+
+  /* space (4-pt grid), shape */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-7: 32px;
+  --space-8: 48px;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 24px;
+  --radius-pill: 999px;
+  --target-min: 48px;
+  --target-nav: 56px;
+
+  /* layout */
+  --panel-width: 400px;
+
+  /* motion */
+  --motion-fast: 120ms;
+  --motion-base: 200ms;
+  --motion-slow: 320ms;
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --ease-emphasized: cubic-bezier(0.05, 0.7, 0.1, 1);
+  --ease-exit: cubic-bezier(0.3, 0, 1, 1);
+
+  color-scheme: light;
+}
+
+.theme-dark {
+  --color-bg: #0a1015;
+  --color-surface: #111a21;
+  --color-surface-2: #18242d;
+  --color-text: #e7eef2;
+  --color-text-muted: #9daebb;
+  --color-border: #26343e;
+  --color-border-control: #62737f;
+  --color-scrim: rgb(0 0 0 / 0.55);
+  --color-primary: #3fd3c1;
+  --color-primary-hover: #62e0d1;
+  --color-on-primary: #03211d;
+  --color-primary-subtle: #0e3a36;
+  --color-on-primary-subtle: #9befe4;
+  --color-accent: #ffc933;
+  --color-on-accent: #2a1e00;
+  --color-secondary: #a5a8ff;
+  --color-on-secondary: #10124a;
+  --color-success: #4ade80;
+  --color-warning: #fbbf24;
+  --color-warning-subtle: #3a2a07;
+  --color-danger: #ff7a7f;
+  --color-danger-subtle: #3d1517;
+  --color-focus: #3fd3c1;
+  --color-toast-bg: #e7eef2;
+  --color-toast-text: #0a1015;
+  --color-toast-action: #0b6e66;
+  --mode-vehicle: #3fd3c1;
+  --mode-walk: #8c9ba6;
+  --mode-rail: #6ea2ff;
+  --mode-lrt: #f07ae0;
+  --mode-bus: #4ade80;
+  --map-casing: #0b1116;
+  --shadow-1: 0 1px 2px rgb(0 0 0 / 0.5);
+  --shadow-2: 0 8px 24px rgb(0 0 0 / 0.55);
+  --shadow-3: 0 16px 40px rgb(0 0 0 / 0.6);
+  color-scheme: dark;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --motion-fast: 1ms;
+    --motion-base: 1ms;
+    --motion-slow: 1ms;
+  }
+}

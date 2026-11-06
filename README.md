@@ -9,7 +9,15 @@ by public transport.
 
 Live app (after Pages is enabled): https://amitaimyers.github.io/ParkNGo/
 
-## Features (MVP, Gush Dan)
+## Features (Gush Dan)
+
+Design system and UX: see [docs/DESIGN.md](docs/DESIGN.md).
+
+- **Map-first** layout: a vector map (MapLibre + OpenFreeMap). On phones results are in a bottom sheet; on wide screens in a side panel.
+- **Auto-planning**: choose a destination and the plan starts. Changing the vehicle, time or return trip re-plans in place, with staged progress.
+- **Light / dark**: follows the system setting, and switches to dark automatically during navigation after sunset.
+- **Accessible**: WCAG 2.2 AA (axe-checked in CI), keyboard and screen-reader friendly, reduced-motion aware, Hebrew right-to-left.
+
 
 - Address search in Hebrew and English. "My location" works as the start point.
 - Vehicle per trip: car, bicycle or e-scooter.
@@ -51,6 +59,7 @@ npm run build:data   # builds public/data/parking.json (needs internet access to
 npm run dev          # http://localhost:5173/ParkNGo/
 npm test             # unit tests (Vitest)
 npm run build        # type-check + production build into dist/
+npm run e2e          # end-to-end + axe accessibility tests on the build (mocked network; run `npm run build` first)
 ```
 
 Requires Node ≥ 22.18, because the data script is TypeScript run directly by Node.

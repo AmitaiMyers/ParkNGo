@@ -4,10 +4,12 @@
 import { requireArray, requireBoolean, requireNumber, requireObject, requireOneOf, requireString } from './assert.ts';
 import { parseLatLng } from './dataset.ts';
 import { VEHICLE_TYPES } from './types.ts';
-import type { ParkedVehicle, Settings } from './types.ts';
+import type { ParkedVehicle, Place, Settings } from './types.ts';
 
 const SETTINGS_KEY = 'parkngo.settings.v1';
 const PARKED_KEY = 'parkngo.parked.v1';
+const RECENTS_KEY = 'parkngo.recents.v1';
+const MAX_RECENTS = 6;
 
 export const DEFAULT_SETTINGS: Settings = {
   language: 'he',
@@ -70,8 +72,29 @@ export function saveParkedVehicle(parked: ParkedVehicle | null): void {
   }
 }
 
+export function loadRecentPlaces(): Place[] {
+  const stored = localStorage.getItem(RECENTS_KEY);
+  if (stored === null) {
+    return [];
+  }
+  return requireArray(JSON.parse(stored), 'stored recent places').map((raw, index) => {
+    const place = requireObject(raw, `recent place ${index}`);
+    return { name: requireString(place['name'], `recent place ${index}.name`), location: parseLatLng(place['location'], `recent place ${index}.location`) };
+  });
+}
+
+/** Puts `place` first in the recent list (deduplicated by name), keeping at most MAX_RECENTS. */
+export function withRecentPlace(recents: Place[], place: Place): Place[] {
+  return [place, ...recents.filter((p) => p.name !== place.name)].slice(0, MAX_RECENTS);
+}
+
+export function saveRecentPlaces(recents: Place[]): void {
+  localStorage.setItem(RECENTS_KEY, JSON.stringify(recents));
+}
+
 /** Removes all ParkNGo data from this device (used to recover from invalid stored data). */
 export function clearAllStoredData(): void {
   localStorage.removeItem(SETTINGS_KEY);
   localStorage.removeItem(PARKED_KEY);
+  localStorage.removeItem(RECENTS_KEY);
 }

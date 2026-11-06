@@ -1,15 +1,19 @@
 import { Component, StrictMode, Suspense } from 'react';
 import type { ErrorInfo, ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
-import 'leaflet/dist/leaflet.css';
-import './styles.css';
+import '@fontsource-variable/rubik';
+import './styles/tokens.css';
+import './styles/base.css';
 import { App } from './App.tsx';
+import styles from './ErrorScreen.module.css';
 import { clearAllStoredData } from './lib/storage.ts';
+import { Button } from './ui/Button.tsx';
+import { ToastProvider } from './ui/Toast.tsx';
 
 /**
  * Last-resort boundary: shows the error instead of a blank page and lets the user reset
  * stored data (e.g. settings saved by an older version that no longer validate).
- * Shown bilingually because the language setting itself may be what failed to load.
+ * Bilingual, because the language setting itself may be what failed to load.
  */
 class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
   state = { error: null as Error | null };
@@ -27,23 +31,22 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | 
       return this.props.children;
     }
     return (
-      <main className="card">
-        <h2>Something went wrong · משהו השתבש</h2>
-        <pre className="error-text">{this.state.error.message}</pre>
-        <div className="row wrap">
-          <button type="button" className="primary" onClick={() => window.location.reload()}>
+      <main className={styles.screen}>
+        <h1>Something went wrong · משהו השתבש</h1>
+        <pre className={styles.message}>{this.state.error.message}</pre>
+        <div className={styles.actions}>
+          <Button variant="primary" onClick={() => window.location.reload()}>
             Try again · נסו שוב
-          </button>
-          <button
-            type="button"
-            className="secondary"
+          </Button>
+          <Button
+            variant="secondary"
             onClick={() => {
               clearAllStoredData();
               window.location.reload();
             }}
           >
             Reset app data · איפוס נתונים
-          </button>
+          </Button>
         </div>
       </main>
     );
@@ -58,9 +61,11 @@ if (rootElement === null) {
 createRoot(rootElement).render(
   <StrictMode>
     <ErrorBoundary>
-      <Suspense fallback={<p className="loading">ParkNGo…</p>}>
-        <App />
-      </Suspense>
+      <ToastProvider>
+        <Suspense fallback={<p className={styles.loading}>ParkNGo</p>}>
+          <App />
+        </Suspense>
+      </ToastProvider>
     </ErrorBoundary>
   </StrictMode>,
 );

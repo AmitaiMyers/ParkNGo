@@ -28,20 +28,33 @@ export default defineConfig({
         ],
       },
       workbox: {
-        globPatterns: ['**/*.{js,css,html,svg,png,json}'],
+        // Fonts: precache only the Hebrew and Latin subsets the UI uses (others download on demand).
+        globPatterns: ['**/*.{js,css,html,svg,png,json}', '**/rubik-{hebrew,latin,latin-ext}-wght-normal-*.woff2'],
         runtimeCaching: [
           {
-            urlPattern: /^https:\/\/tile\.openstreetmap\.org\//,
+            // Vector tiles: cache-first, a week, bounded.
+            urlPattern: /^https:\/\/tiles\.openfreemap\.org\/planet\//,
             handler: 'CacheFirst',
-            options: {
-              cacheName: 'osm-tiles',
-              expiration: { maxEntries: 500, maxAgeSeconds: 7 * 24 * 60 * 60 },
-            },
+            options: { cacheName: 'map-tiles', expiration: { maxEntries: 1500, maxAgeSeconds: 7 * 24 * 60 * 60 } },
+          },
+          {
+            // Map styles, fonts and sprites: fast from cache, refreshed in the background.
+            urlPattern: /^https:\/\/tiles\.openfreemap\.org\/(styles|fonts|sprites)\//,
+            handler: 'StaleWhileRevalidate',
+            options: { cacheName: 'map-style', expiration: { maxEntries: 300, maxAgeSeconds: 30 * 24 * 60 * 60 } },
           },
         ],
       },
     }),
   ],
+  worker: {
+    // MapLibre starts its worker as a module worker.
+    format: 'es',
+  },
+  build: {
+    // The lazy MapLibre chunk (~1.07 MB, ~290 KB gzip) is expected; it loads after first paint.
+    chunkSizeWarningLimit: 1200,
+  },
   test: {
     environment: 'node',
     include: ['tests/**/*.test.ts'],

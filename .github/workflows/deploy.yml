@@ -39,6 +39,12 @@ jobs:
       - name: Build PWA
         run: npm run build
 
+      - name: Install Playwright browser
+        run: npx playwright install --with-deps chromium
+
+      - name: End-to-end and accessibility tests (mocked network)
+        run: npm run e2e
+
       - uses: actions/configure-pages@v5
 
       - uses: actions/upload-pages-artifact@v3

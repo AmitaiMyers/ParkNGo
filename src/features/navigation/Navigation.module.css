@@ -1,0 +1,200 @@
+.screen {
+  position: fixed;
+  inset: 0;
+}
+
+.top {
+  position: fixed;
+  top: max(var(--space-3), env(safe-area-inset-top));
+  inset-inline: var(--space-3);
+  z-index: 30;
+  display: grid;
+  gap: var(--space-2);
+  justify-items: start;
+}
+
+.banner {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  width: 100%;
+  padding: var(--space-4);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  color: var(--color-text);
+  box-shadow: var(--shadow-2);
+  transition:
+    background-color var(--motion-base) var(--ease-standard),
+    color var(--motion-base) var(--ease-standard);
+}
+
+/* Within 100 m of a turn the banner switches to the brand color. */
+.banner[data-close='true'] {
+  background: var(--color-primary);
+  color: var(--color-on-primary);
+}
+
+.bannerText {
+  min-width: 0;
+  animation: rise-in var(--motion-base) var(--ease-emphasized);
+}
+
+.distance {
+  font: var(--text-nav-distance);
+  font-variant-numeric: tabular-nums;
+}
+
+.instruction {
+  font: var(--text-nav-instruction);
+  overflow-wrap: anywhere;
+}
+
+.maneuverIcon {
+  flex: none;
+}
+
+.parkingIcon {
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  flex: none;
+  border: 3px solid var(--color-on-accent);
+  border-radius: 12px;
+  background: var(--color-accent);
+  color: var(--color-on-accent);
+  font: 700 1.75rem/1 var(--font-ui);
+}
+
+.then {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px var(--space-3);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-text);
+  box-shadow: var(--shadow-1);
+  font: var(--text-label);
+}
+
+.notice {
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  background: var(--color-warning-subtle);
+  color: var(--color-warning);
+  font: var(--text-label);
+  box-shadow: var(--shadow-1);
+}
+
+.bottom {
+  position: fixed;
+  inset-inline: 0;
+  bottom: 0;
+  z-index: 30;
+  display: grid;
+  gap: var(--space-3);
+  max-height: 60dvh;
+  padding: var(--space-4) var(--space-4) max(var(--space-4), env(safe-area-inset-bottom));
+  overflow-y: auto;
+  border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+  background: var(--color-surface);
+  box-shadow: var(--shadow-2);
+}
+
+@media (min-width: 900px) {
+  .top,
+  .bottom {
+    inset-inline-end: auto;
+    width: var(--panel-width);
+  }
+
+  .bottom {
+    inset-inline-start: var(--space-3);
+    bottom: var(--space-3);
+    border-radius: var(--radius-xl);
+  }
+}
+
+.eta {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.etaTime {
+  color: var(--color-success);
+  font: var(--text-title);
+  font-variant-numeric: tabular-nums;
+}
+
+.etaRest {
+  color: var(--color-text-muted);
+  font: var(--text-label);
+}
+
+.actions {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.actions > :first-child {
+  flex: 1;
+}
+
+.menu {
+  display: grid;
+  gap: var(--space-2);
+  animation: rise-in var(--motion-base) var(--ease-emphasized);
+}
+
+.steps {
+  display: grid;
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.step {
+  display: grid;
+  grid-template-columns: 52px 24px minmax(0, 1fr);
+  gap: var(--space-2);
+  align-items: start;
+}
+
+.stepTime {
+  font: var(--text-body-strong);
+  font-variant-numeric: tabular-nums;
+}
+
+.stepIcon {
+  margin-top: 2px;
+  color: var(--color-text-muted);
+}
+
+.stepText {
+  display: grid;
+  gap: 2px;
+}
+
+.stepText small {
+  color: var(--color-text-muted);
+  font: var(--text-caption);
+}
+
+.countdown {
+  justify-self: start;
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+  background: var(--color-primary-subtle);
+  color: var(--color-on-primary-subtle);
+  font: var(--text-caption);
+  font-variant-numeric: tabular-nums;
+}
+
+.countdown[data-hurry='true'] {
+  background: var(--color-warning-subtle);
+  color: var(--color-warning);
+}

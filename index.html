@@ -8,6 +8,12 @@
     <link rel="icon" href="%BASE_URL%icons/icon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="%BASE_URL%icons/icon-192.png" />
     <title>ParkNGo</title>
+    <script>
+      // Apply the dark theme before first paint (no light flash); useTheme keeps it in sync afterwards.
+      if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
+        document.documentElement.classList.add('theme-dark');
+      }
+    </script>
   </head>
   <body>
     <div id="root"></div>

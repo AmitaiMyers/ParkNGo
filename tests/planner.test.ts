@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { buildOption, filterCandidates, generalizedCost, isPriceAccepted, pickHighlights, planTrip, topWithParkAndRide } from '../src/lib/planner.ts';
+import { buildOption, filterCandidates, generalizedCost, isPriceAccepted, pickHighlights, planReturnToVehicle, planTrip, topWithParkAndRide } from '../src/lib/planner.ts';
+import type { PlanProgress } from '../src/lib/planner.ts';
 import type { PlannerApi } from '../src/lib/planner.ts';
 import type { StreetAccess } from '../src/lib/transitous.ts';
 import type { LiveLotStatus } from '../src/lib/telAvivParking.ts';
@@ -67,6 +68,8 @@ describe('generalizedCost', () => {
   });
 });
 
+const noProgress = () => {};
+
 describe('planTrip', () => {
   const departure = new Date('2026-11-08T07:00:00Z');
   const request = makeRequest({ departure });
@@ -95,7 +98,7 @@ describe('planTrip', () => {
     makeSpot({ id, location: { lat: 32.12, lng: 34.835 }, source: 'tlv-ahuzot', liveStatus: { provider: 'tlv-ahuzot', lotCode: 1 }, price: { type: 'paid', dailyIls: null } });
 
   it('skips lots reported full or closed and keeps the live status of the others', async () => {
-    const result = await planTrip(request, settings, [nearSpot, tlvLot('full-lot'), tlvLot('few-lot')], [], fakeApi);
+    const result = await planTrip(request, settings, [nearSpot, tlvLot('full-lot'), tlvLot('few-lot')], [], fakeApi, noProgress);
     expect(result.candidatesConsidered).toBe(3);
     expect(result.skippedFullOrClosed).toBe(1);
     expect(result.options.map((o) => o.spot!.id).sort()).toEqual(['few-lot', 'near']);
@@ -105,31 +108,49 @@ describe('planTrip', () => {
 
   it('does not call the live-status service when no candidate has live data', async () => {
     const before = lotStatusCalls;
-    await planTrip(request, settings, [nearSpot], [], fakeApi);
+    await planTrip(request, settings, [nearSpot], [], fakeApi, noProgress);
     expect(lotStatusCalls).toBe(before);
   });
 
   it('keeps planning, and reports the error, when the live-status service fails', async () => {
     const failing: PlannerApi = { ...fakeApi, lotStatuses: async () => Promise.reject(new Error('HTTP 503')) };
-    const result = await planTrip(request, settings, [nearSpot, tlvLot('full-lot')], [], failing);
+    const result = await planTrip(request, settings, [nearSpot, tlvLot('full-lot')], [], failing, noProgress);
     expect(result.liveStatusError).toBe('HTTP 503');
     expect(result.skippedFullOrClosed).toBe(0);
     expect(result.options).toHaveLength(2);
   });
 
+  it('reports the planning stages in order, with the number of lots routed', async () => {
+    const seen: PlanProgress[] = [];
+    await planTrip(request, settings, [nearSpot, paidSpot], [], fakeApi, (progress) => seen.push(progress));
+    expect(seen).toEqual([
+      { stage: 'finding', lotCount: null },
+      { stage: 'live', lotCount: null },
+      { stage: 'routing', lotCount: 2 },
+      { stage: 'comparing', lotCount: null },
+    ]);
+  });
+
+  it('plans the way back to the parked vehicle by public transport', async () => {
+    const vehicleAt = { name: 'Reading West', location: nearSpot.location };
+    const option = await planReturnToVehicle({ name: 'Here', location: { lat: 32.07, lng: 34.79 } }, vehicleAt, departure, settings, fakeApi);
+    expect(option!.kind).toBe('transit_only');
+    expect(option!.legs.some((leg) => leg.isTransit)).toBe(true);
+  });
+
   it('adds a carry-on option (ride at both ends) only when requested with a bicycle or scooter', async () => {
     accessModesSeen.length = 0;
     const bikeRequest = makeRequest({ departure, vehicle: 'bicycle', carryVehicle: true });
-    const result = await planTrip(bikeRequest, settings, [], [], fakeApi);
+    const result = await planTrip(bikeRequest, settings, [], [], fakeApi, noProgress);
     expect(result.carryOn!.kind).toBe('carry_on');
     expect(result.carryOn!.legs[0]!.mode).toBe('BIKE');
     expect(accessModesSeen).toContain('BIKE');
-    expect((await planTrip(request, settings, [], [], fakeApi)).carryOn).toBeNull();
-    await expect(planTrip(makeRequest({ carryVehicle: true }), settings, [], [], fakeApi)).rejects.toThrow(/bicycle or scooter/);
+    expect((await planTrip(request, settings, [], [], fakeApi, noProgress)).carryOn).toBeNull();
+    await expect(planTrip(makeRequest({ carryVehicle: true }), settings, [], [], fakeApi, noProgress)).rejects.toThrow(/bicycle or scooter/);
   });
 
   it('returns highlighted park-and-ride options plus both baselines', async () => {
-    const result = await planTrip(request, settings, [nearSpot, paidSpot], [], fakeApi);
+    const result = await planTrip(request, settings, [nearSpot, paidSpot], [], fakeApi, noProgress);
     expect(result.candidatesConsidered).toBe(2);
     expect(result.options).toHaveLength(2);
     expect(result.highlights!.fastest.spot!.id).toBe('paid');
@@ -140,7 +161,7 @@ describe('planTrip', () => {
   });
 
   it('returns no highlights when there is no candidate', async () => {
-    const result = await planTrip(request, settings, [], [], fakeApi);
+    const result = await planTrip(request, settings, [], [], fakeApi, noProgress);
     expect(result.options).toEqual([]);
     expect(result.highlights).toBeNull();
   });

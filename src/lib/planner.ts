@@ -12,7 +12,7 @@ import { isFullOrClosed } from './telAvivParking.ts';
 import type { LiveLotStatus } from './telAvivParking.ts';
 import { rideAccess, walkAccess } from './transitous.ts';
 import type { Itinerary, RouteLeg, RoutingApi, StreetAccess } from './transitous.ts';
-import type { AvoidZone, LatLng, ParkingSpot, Settings, TripRequest, VehicleType } from './types.ts';
+import type { AvoidZone, LatLng, ParkingSpot, Place, Settings, TripRequest, VehicleType } from './types.ts';
 
 /** dist(A,P) + dist(P,B) must not exceed this factor × dist(A,B). */
 export const DETOUR_FACTOR = 1.5;
@@ -221,6 +221,18 @@ export function pickHighlights(options: TripOption[]): Highlights | null {
 
 // ---------- Orchestration (network) ----------
 
+/** Stages reported while planning, so the UI can show real progress instead of a spinner. */
+export type PlanStage = 'finding' | 'live' | 'routing' | 'comparing';
+export const PLAN_STAGES: readonly PlanStage[] = ['finding', 'live', 'routing', 'comparing'];
+
+export interface PlanProgress {
+  stage: PlanStage;
+  /** Number of lots being routed (only for the 'routing' stage). */
+  lotCount: number | null;
+}
+
+export type ProgressListener = (progress: PlanProgress) => void;
+
 /** Routing plus live lot status; injected so the planner can be unit-tested. */
 export interface PlannerApi extends RoutingApi {
   lotStatuses: () => Promise<Map<string, LiveLotStatus>>;
@@ -309,20 +321,32 @@ function bestPerSpot(options: TripOption[]): TripOption[] {
   return [...best.values()].sort((a, b) => a.generalizedCost - b.generalizedCost);
 }
 
-export async function planTrip(request: TripRequest, settings: Settings, spots: ParkingSpot[], zones: AvoidZone[], api: PlannerApi): Promise<PlanResult> {
+export async function planTrip(
+  request: TripRequest,
+  settings: Settings,
+  spots: ParkingSpot[],
+  zones: AvoidZone[],
+  api: PlannerApi,
+  onProgress: ProgressListener,
+): Promise<PlanResult> {
   if (request.carryVehicle && request.vehicle === 'car') {
     throw new Error('carryVehicle is only possible with a bicycle or scooter');
   }
+  onProgress({ stage: 'finding', lotCount: null });
   const candidates = filterCandidates(spots, request, settings, zones);
+  onProgress({ stage: 'live', lotCount: null });
   const live = await lookUpLiveStatuses(candidates, api);
   const open = candidates.filter((spot) => !isReportedFullOrClosed(spot, live.statuses));
   const ranked = await rankByStreetTime(open, request, api);
+  const toRoute = topWithParkAndRide(ranked, FULL_ROUTING_COUNT, FULL_ROUTING_EXTRA_PARK_AND_RIDE);
+  onProgress({ stage: 'routing', lotCount: toRoute.length });
   const [viaSpots, vehicleOnly, transitOnly, carryOn] = await Promise.all([
-    Promise.all(topWithParkAndRide(ranked, FULL_ROUTING_COUNT, FULL_ROUTING_EXTRA_PARK_AND_RIDE).map((spot) => routeViaSpot(spot, request, settings, api))),
+    Promise.all(toRoute.map((spot) => routeViaSpot(spot, request, settings, api))),
     vehicleOnlyOption(request, settings, api),
     bestTransitOption('transit_only', walkingAccess(settings), request, settings, api),
     carryOnOption(request, settings, api),
   ]);
+  onProgress({ stage: 'comparing', lotCount: null });
   const options = bestPerSpot(viaSpots.flat());
   return {
     candidatesConsidered: candidates.length,
@@ -344,4 +368,17 @@ export async function planReturnTrip(option: TripOption, request: TripRequest, s
   }
   const itineraries = await api.transitRoutes(request.destination.location, option.spot.location, request.returnDeparture, walkingAccess(settings), settings.language);
   return itineraries.length === 0 ? null : minBy(itineraries, (it) => it.endTime.getTime());
+}
+
+/** "Get me back to my car": the best public-transport trip from where the user is to the parked vehicle. */
+export async function planReturnToVehicle(from: Place, vehicleAt: Place, departure: Date, settings: Settings, api: RoutingApi): Promise<TripOption | null> {
+  const request: TripRequest = {
+    origin: from,
+    destination: vehicleAt,
+    vehicle: settings.vehicle,
+    carryVehicle: false,
+    departure,
+    returnDeparture: null,
+  };
+  return bestTransitOption('transit_only', walkingAccess(settings), request, settings, api);
 }

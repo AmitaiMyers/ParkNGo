@@ -1,0 +1,35 @@
+.screen {
+  display: grid;
+  gap: var(--space-4);
+  max-width: 560px;
+  margin: var(--space-8) auto;
+  padding: var(--space-6);
+  border-radius: var(--radius-xl);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-2);
+}
+
+.screen h1 {
+  font: var(--text-title);
+}
+
+.message {
+  margin: 0;
+  color: var(--color-danger);
+  font: var(--text-label);
+  white-space: pre-wrap;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+
+.loading {
+  display: grid;
+  place-items: center;
+  height: 100%;
+  color: var(--color-text-muted);
+  font: var(--text-heading);
+}
