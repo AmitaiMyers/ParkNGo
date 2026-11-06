@@ -27,18 +27,24 @@ export interface NearestStation {
   location: LatLng;
 }
 
+/** Where to fetch live occupancy for a spot (null = no live data). */
+export type LiveStatusSource = { provider: 'tlv-ahuzot'; lotCode: number };
+
+export const SPOT_SOURCES = ['osm', 'curated', 'tlv-ahuzot'] as const;
+
 export interface ParkingSpot {
   id: string;
   name: string | null;
   nameEn: string | null;
   location: LatLng;
-  source: 'osm' | 'curated';
+  source: (typeof SPOT_SOURCES)[number];
   vehicleTypes: VehicleType[];
   price: ParkingPrice;
   priceNote: string | null;
   capacity: number | null;
   openingHours: string | null;
   isParkAndRide: boolean;
+  liveStatus: LiveStatusSource | null;
   nearestStation: NearestStation;
 }
 
@@ -74,6 +80,8 @@ export interface TripRequest {
   origin: Place;
   destination: Place;
   vehicle: VehicleType;
+  /** Bicycle/scooter only: take it on board (folded) and ride the first and last stretch. */
+  carryVehicle: boolean;
   departure: Date;
   /** When set, the app also plans the public-transport trip back to the parked vehicle. */
   returnDeparture: Date | null;

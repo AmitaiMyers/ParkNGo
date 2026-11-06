@@ -109,7 +109,7 @@ export function isParkAndRideTags(tags: Record<string, string>): boolean {
   if (tags['parking'] === 'park_and_ride') {
     return true;
   }
-  return ['name', 'name:he', 'name:en'].some((key) => tags[key] !== undefined && PARK_AND_RIDE_NAME.test(tags[key]!));
+  return ['name', 'name:he', 'name:en'].some((key) => tags[key] !== undefined && isParkAndRideName(tags[key]!));
 }
 
 function vehicleTypesFor(tags: Record<string, string>): VehicleType[] {
@@ -121,6 +121,15 @@ function parseCapacity(tags: Record<string, string>): number | null {
   return capacity !== undefined && /^\d+$/.test(capacity) ? Number(capacity) : null;
 }
 
+/** Ordinary lots must be near a rapid-transit station; park-and-ride lots are always kept. */
+export function isUsefulForParkAndRide(isParkAndRide: boolean, station: NearestStation): boolean {
+  return isParkAndRide || station.distanceMeters <= MAX_STATION_DISTANCE_METERS;
+}
+
+export function isParkAndRideName(name: string): boolean {
+  return PARK_AND_RIDE_NAME.test(name);
+}
+
 /** Converts an OSM parking element into a ParkingSpot, or null when it is unusable for park & ride. */
 export function spotFromOsm(element: OsmElement, stations: Station[]): ParkingSpot | null {
   const access = element.tags['access'];
@@ -129,7 +138,7 @@ export function spotFromOsm(element: OsmElement, stations: Station[]): ParkingSp
   }
   const station = nearestStation(element.location, stations);
   const isParkAndRide = isParkAndRideTags(element.tags);
-  if (!isParkAndRide && station.distanceMeters > MAX_STATION_DISTANCE_METERS) {
+  if (!isUsefulForParkAndRide(isParkAndRide, station)) {
     return null;
   }
   const { price, note } = priceFromTags(element.tags);
@@ -145,6 +154,7 @@ export function spotFromOsm(element: OsmElement, stations: Station[]): ParkingSp
     capacity: parseCapacity(element.tags),
     openingHours: element.tags['opening_hours'] === undefined ? null : element.tags['opening_hours'],
     isParkAndRide,
+    liveStatus: null,
     nearestStation: station,
   };
 }

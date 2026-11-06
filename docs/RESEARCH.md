@@ -27,7 +27,14 @@ Changes from the research proposal, found while implementing:
 - **Park-and-ride lots are collected from OpenStreetMap** (`park_ride=*`, `parking=park_and_ride`, or a "חנה וסע" / "Park & Ride" name).
   They skip the "near a rail station" rule, because many are served by shuttle buses (e.g. Shapirim). The planner always
   fully routes the 2 best of them, in addition to the top 5 lots. The deploy log prints every lot found.
-- **Live lot status (Ahuzot HaHof)** is not implemented. Those lots are mostly *inside* Tel Aviv, which is the default avoid zone, so they rarely matter to this app. The Tel Aviv GIS host was also unreachable from the development sandbox. This is a candidate for the next iteration.
+- ~~**Live lot status (Ahuzot HaHof)** is not implemented.~~ Superseded below. Those lots are mostly *inside* Tel Aviv, which is the default avoid zone, so they rarely matter to this app. The Tel Aviv GIS host was also unreachable from the development sandbox. This is a candidate for the next iteration.
+
+- **Live lot status (implemented, 2026-11-06):** the Tel Aviv GIS layer 970 is free, needs no key, and allows CORS from any origin.
+  - `status_chenyon` values: פנוי available, מעט few, מלא full, סגור closed, פעיל open without a count, or blank. An unknown value fails fast.
+  - The `tr_status_chenyon` timestamps are Israel wall-clock time stored as UTC, so they are converted.
+  - The planner skips lots that are full or closed. If the service fails, planning continues and the UI shows a warning. This is the one deliberate exception to fail-fast: the status is optional extra data and is never silently dropped.
+- **Carry-on bicycle / scooter (implemented):** one Transitous request with `preTransitModes=BIKE&postTransitModes=BIKE`.
+  - It does not set `requireBikeTransport`: the Israeli GTFS marks most trips `bikesAllowed=false`, and a folded scooter or bike is treated as hand luggage. The UI tells users to check the operator's rules.
 
 ---
 

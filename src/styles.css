@@ -392,3 +392,21 @@ footer {
   text-align: center;
   padding: 40px;
 }
+
+.live-status {
+  margin: 6px 0;
+  font-weight: 600;
+}
+
+.live-full,
+.live-closed {
+  color: var(--danger);
+}
+
+.price-note {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  margin: 4px 0;
+}

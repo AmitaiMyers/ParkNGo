@@ -30,6 +30,26 @@ export function vehicleStreetMode(vehicle: VehicleType): StreetMode {
   return VEHICLE_PROFILES[vehicle].mode;
 }
 
+/** How the traveller reaches the first stop and leaves the last stop of a public-transport trip. */
+export interface StreetAccess {
+  mode: 'WALK' | 'BIKE';
+  maxSeconds: number;
+  cyclingSpeed: number | null;
+}
+
+export function walkAccess(maxSeconds: number): StreetAccess {
+  return { mode: 'WALK', maxSeconds, cyclingSpeed: null };
+}
+
+/** Riding a carried (folded) bicycle or scooter to the first stop and from the last stop. */
+export function rideAccess(vehicle: VehicleType, maxSeconds: number): StreetAccess {
+  const profile = VEHICLE_PROFILES[vehicle];
+  if (profile.mode !== 'BIKE') {
+    throw new Error(`rideAccess is only for bicycle-profile vehicles, got ${vehicle}`);
+  }
+  return { mode: 'BIKE', maxSeconds, cyclingSpeed: profile.cyclingSpeed };
+}
+
 export interface RouteStep {
   streetName: string;
   distanceMeters: number;
@@ -198,22 +218,23 @@ export async function streetRoute(from: LatLng, to: LatLng, vehicle: VehicleType
   return direct.length === 0 ? null : parseItinerary(direct[0]);
 }
 
-/** Public-transport itineraries (with walking at both ends), departing at or after `departure`. */
-export async function transitRoutes(from: LatLng, to: LatLng, departure: Date, maxWalkSeconds: number, language: Language): Promise<Itinerary[]> {
-  const raw = requireObject(
-    await getJson('/api/v6/plan', {
-      fromPlace: formatLatLng(from),
-      toPlace: formatLatLng(to),
-      time: departure.toISOString(),
-      preTransitModes: 'WALK',
-      postTransitModes: 'WALK',
-      directModes: 'WALK',
-      maxPreTransitTime: String(maxWalkSeconds),
-      maxPostTransitTime: String(maxWalkSeconds),
-      language,
-    }),
-    'plan response',
-  );
+/** Public-transport itineraries (walking or riding at both ends), departing at or after `departure`. */
+export async function transitRoutes(from: LatLng, to: LatLng, departure: Date, access: StreetAccess, language: Language): Promise<Itinerary[]> {
+  const params: Record<string, string> = {
+    fromPlace: formatLatLng(from),
+    toPlace: formatLatLng(to),
+    time: departure.toISOString(),
+    preTransitModes: access.mode,
+    postTransitModes: access.mode,
+    directModes: access.mode,
+    maxPreTransitTime: String(access.maxSeconds),
+    maxPostTransitTime: String(access.maxSeconds),
+    language,
+  };
+  if (access.cyclingSpeed !== null) {
+    params['cyclingSpeed'] = String(access.cyclingSpeed);
+  }
+  const raw = requireObject(await getJson('/api/v6/plan', params), 'plan response');
   const transit = requireArray(raw['itineraries'], 'plan.itineraries').map(parseItinerary);
   const walkOnly = requireArray(raw['direct'], 'plan.direct').map(parseItinerary);
   return [...transit, ...walkOnly];

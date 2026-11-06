@@ -18,6 +18,7 @@ export function makeSpot(overrides: Partial<ParkingSpot> & Pick<ParkingSpot, 'id
     capacity: null,
     openingHours: null,
     isParkAndRide: false,
+    liveStatus: null,
     nearestStation: { name: 'Station', distanceMeters: 200, location: overrides.location },
     ...overrides,
   };
@@ -28,6 +29,7 @@ export function makeRequest(overrides: Partial<TripRequest> = {}): TripRequest {
     origin: { name: 'A', location: RAANANA },
     destination: { name: 'B', location: AZRIELI },
     vehicle: 'car',
+    carryVehicle: false,
     departure: new Date('2026-11-08T07:00:00Z'),
     returnDeparture: null,
     ...overrides,

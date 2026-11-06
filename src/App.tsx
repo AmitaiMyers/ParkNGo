@@ -2,7 +2,8 @@ import { use, useEffect, useMemo, useState } from 'react';
 import { loadDataset } from './lib/dataset.ts';
 import { makeTranslator } from './lib/i18n.ts';
 import { planTrip } from './lib/planner.ts';
-import type { PlanResult, TripOption } from './lib/planner.ts';
+import type { PlanResult, PlannerApi, TripOption } from './lib/planner.ts';
+import { fetchAhuzotStatuses } from './lib/telAvivParking.ts';
 import { loadParkedVehicle, loadSettings, saveParkedVehicle, saveSettings } from './lib/storage.ts';
 import { transitousApi } from './lib/transitous.ts';
 import type { ParkedVehicle, Settings, TripRequest } from './lib/types.ts';
@@ -12,6 +13,8 @@ import { NavigationView } from './components/NavigationView.tsx';
 import { ResultsView } from './components/ResultsView.tsx';
 import { SettingsView } from './components/SettingsView.tsx';
 import { TripForm } from './components/TripForm.tsx';
+
+const plannerApi: PlannerApi = { ...transitousApi, lotStatuses: fetchAhuzotStatuses };
 
 // Loaded once per page; errors surface through the ErrorBoundary via React's `use`.
 const datasetPromise = loadDataset();
@@ -56,7 +59,7 @@ export function App() {
 
   const plan = (request: TripRequest) => {
     setPlanning({ status: 'busy' });
-    planTrip(request, settings, dataset.spots, dataset.avoidZones, transitousApi).then(
+    planTrip(request, settings, dataset.spots, dataset.avoidZones, plannerApi).then(
       (result) => setPlanning({ status: 'done', request, result }),
       (reason: Error) => setPlanning({ status: 'error', message: reason.message }),
     );

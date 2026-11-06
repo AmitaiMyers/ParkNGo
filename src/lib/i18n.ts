@@ -44,6 +44,20 @@ const en = {
   vehicleOnly_bicycle: 'Ride all the way',
   vehicleOnly_scooter: 'Ride all the way',
   transitOnly: 'Public transport only',
+  carryVehicle: 'Also: take it with me (folded) and ride the last stretch',
+  carryOn: 'Take it with you & ride the last stretch',
+  carryOnNote: 'Folding bicycles / scooters only. Check the operator’s rules for carrying it on board.',
+  rideTo: 'Ride to {place}',
+  continue: 'Continue',
+  live_available: 'Live: spaces available',
+  live_few: 'Live: few spaces left',
+  live_full: 'Live: full',
+  live_closed: 'Live: closed',
+  live_open_no_count: 'Live: open',
+  live_no_data: 'Live: no data',
+  liveUpdated: 'updated {time}',
+  skippedFull: '{n} lots skipped because they are full or closed right now',
+  liveStatusUnavailable: 'Live parking status is unavailable right now ({error}); showing lots without it.',
   destinationParkingNotIncluded: 'Parking at the destination not included',
   noOptions: 'No park & ride option found. Try a larger walking distance, allow paid parking, or a different time (public transport does not run on Shabbat and holidays).',
   candidates: '{n} parking spots checked',
@@ -83,7 +97,7 @@ const en = {
   voiceGuidance: 'Voice guidance',
   reportSpot: 'Suggest a parking spot',
   dataInfo: 'Parking data: {count} spots, updated {date}',
-  attribution: 'Routing: Transitous · Map & parking data © OpenStreetMap contributors',
+  attribution: 'Routing: Transitous · Map & parking data © OpenStreetMap contributors · Live lot status: Tel Aviv-Yafo Municipality',
   chooseFromList: 'Choose a place from the suggestions',
   maneuver_depart: 'Head out on {street}',
   maneuver_continue: 'Continue onto {street}',
@@ -149,6 +163,20 @@ const he: Record<MessageKey, string> = {
   vehicleOnly_bicycle: 'רכיבה עד היעד',
   vehicleOnly_scooter: 'רכיבה עד היעד',
   transitOnly: 'רק תחבורה ציבורית',
+  carryVehicle: 'גם: לקחת איתי (מקופל) ולרכוב בקטע האחרון',
+  carryOn: 'לוקחים איתכם ורוכבים בקטע האחרון',
+  carryOnNote: 'אופניים / קורקינט מתקפלים בלבד. בדקו את כללי המפעיל לגבי עלייה עם כלי רכב.',
+  rideTo: 'רכיבה אל {place}',
+  continue: 'המשך',
+  live_available: 'בזמן אמת: יש מקום',
+  live_few: 'בזמן אמת: מעט מקומות',
+  live_full: 'בזמן אמת: מלא',
+  live_closed: 'בזמן אמת: סגור',
+  live_open_no_count: 'בזמן אמת: פתוח',
+  live_no_data: 'בזמן אמת: אין מידע',
+  liveUpdated: 'עודכן {time}',
+  skippedFull: 'דילגנו על {n} חניונים שמלאים או סגורים כרגע',
+  liveStatusUnavailable: 'סטטוס החניונים בזמן אמת אינו זמין כרגע ({error}); מוצגים חניונים בלעדיו.',
   destinationParkingNotIncluded: 'לא כולל חניה ביעד',
   noOptions: 'לא נמצאה אפשרות חנה וסע. נסו מרחק הליכה גדול יותר, לאפשר חניה בתשלום, או שעה אחרת (אין תחבורה ציבורית בשבת ובחגים).',
   candidates: 'נבדקו {n} חניות',
@@ -188,7 +216,7 @@ const he: Record<MessageKey, string> = {
   voiceGuidance: 'הנחיות קוליות',
   reportSpot: 'הצעת חניה חדשה',
   dataInfo: 'נתוני חניה: {count} חניות, עודכן {date}',
-  attribution: 'ניתוב: Transitous · מפה ונתוני חניה © תורמי OpenStreetMap',
+  attribution: 'ניתוב: Transitous · מפה ונתוני חניה © תורמי OpenStreetMap · סטטוס חניונים: עיריית תל אביב-יפו',
   chooseFromList: 'בחרו מקום מתוך ההצעות',
   maneuver_depart: 'צאו לדרך ב{street}',
   maneuver_continue: 'המשיכו אל {street}',
@@ -237,6 +265,16 @@ export function maneuverText(t: Translate, type: ManeuverType, streetName: strin
 
 export function formatTime(language: Language, date: Date): string {
   return new Intl.DateTimeFormat(language === 'he' ? 'he-IL' : 'en-IL', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Jerusalem' }).format(date);
+}
+
+/** Arrival time; adds the weekday when it is not on the departure day (e.g. no service until after Shabbat). */
+export function formatArrival(language: Language, arrival: Date, departure: Date): string {
+  const dayKey = (date: Date) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jerusalem' }).format(date);
+  if (dayKey(arrival) === dayKey(departure)) {
+    return formatTime(language, arrival);
+  }
+  const weekday = new Intl.DateTimeFormat(language === 'he' ? 'he-IL' : 'en-IL', { weekday: 'short', timeZone: 'Asia/Jerusalem' }).format(arrival);
+  return `${weekday} ${formatTime(language, arrival)}`;
 }
 
 export function formatDistance(language: Language, meters: number): string {

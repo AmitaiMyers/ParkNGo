@@ -86,8 +86,11 @@ export function NavigationView({ option, request, settings, onParked, onExit }: 
   const spoken = useRef(new Set<string>());
 
   const spot = option.spot;
-  const vehicleTarget = spot === null ? request.destination.location : spot.location;
-  const targetName = spot === null ? request.destination.name : spotDisplayName(spot, i18n);
+  // Where the vehicle phase ends: the parking spot, the boarding stop (carried vehicle), or the destination.
+  const lastVehicleLeg = initial.vehicle[initial.vehicle.length - 1];
+  const boardingStop = option.kind === 'carry_on' && lastVehicleLeg !== undefined ? lastVehicleLeg : null;
+  const vehicleTarget = spot !== null ? spot.location : boardingStop !== null ? boardingStop.to : request.destination.location;
+  const targetName = spot !== null ? spotDisplayName(spot, i18n) : boardingStop !== null ? boardingStop.toName : request.destination.name;
 
   const route = useMemo(() => {
     const points = vehicleLegs.flatMap((leg) => leg.geometry);
@@ -151,8 +154,12 @@ export function NavigationView({ option, request, settings, onParked, onExit }: 
     }
   }, [phase, settings.voiceGuidance, next, distanceToNext, position, route, request.vehicle, t, language]);
 
+  // A carried bicycle/scooter is never parked, so nothing is remembered for it.
+  const carriesVehicle = option.kind === 'carry_on';
   const finishVehicle = () => {
-    onParked({ location: position === null ? vehicleTarget : position, label: targetName, savedAt: new Date().toISOString() });
+    if (!carriesVehicle) {
+      onParked({ location: position === null ? vehicleTarget : position, label: targetName, savedAt: new Date().toISOString() });
+    }
     if (initial.rest.length === 0) {
       onExit();
     } else {
@@ -212,7 +219,7 @@ export function NavigationView({ option, request, settings, onParked, onExit }: 
           </p>
           <div className="row wrap">
             <button type="button" className={nearTarget ? 'primary' : 'secondary'} onClick={finishVehicle}>
-              {initial.rest.length === 0 ? t('arrivedDone') : t('iParked')}
+              {initial.rest.length === 0 ? t('arrivedDone') : carriesVehicle ? t('continue') : t('iParked')}
             </button>
             <a className="button secondary" href={wazeUrl(vehicleTarget.lat, vehicleTarget.lng)} target="_blank" rel="noreferrer">
               {t('openInWaze')}
@@ -237,7 +244,8 @@ export function NavigationView({ option, request, settings, onParked, onExit }: 
                 <span className="time">{formatTime(language, leg.startTime)}</span>
                 {leg.line === null ? (
                   <span>
-                    🚶 {t('walkTo', { place: placeName(leg.toName, false) })} · {t('minutes', { n: Math.round(leg.durationSeconds / 60) })}
+                    {leg.mode === 'BIKE' ? `🚲 ${t('rideTo', { place: placeName(leg.toName, false) })}` : `🚶 ${t('walkTo', { place: placeName(leg.toName, false) })}`} ·{' '}
+                    {t('minutes', { n: Math.round(leg.durationSeconds / 60) })}
                   </span>
                 ) : (
                   <span>

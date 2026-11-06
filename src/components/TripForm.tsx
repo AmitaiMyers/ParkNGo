@@ -30,6 +30,7 @@ export function TripForm({ settings, busy, onPlan }: Props) {
   const [origin, setOrigin] = useState<Place | null>(null);
   const [destination, setDestination] = useState<Place | null>(null);
   const [vehicle, setVehicle] = useState<VehicleType>(settings.vehicle);
+  const [carryVehicle, setCarryVehicle] = useState(false);
   const [leaveNow, setLeaveNow] = useState(true);
   const [departureValue, setDepartureValue] = useState(() => toDateTimeLocalValue(new Date()));
   const [planReturn, setPlanReturn] = useState(false);
@@ -43,7 +44,14 @@ export function TripForm({ settings, busy, onPlan }: Props) {
       throw new Error('submit called without origin and destination');
     }
     const departure = leaveNow ? new Date() : new Date(departureValue);
-    onPlan({ origin, destination, vehicle, departure, returnDeparture: planReturn ? nextTimeAfter(departure, returnTime) : null });
+    onPlan({
+      origin,
+      destination,
+      vehicle,
+      carryVehicle: vehicle !== 'car' && carryVehicle,
+      departure,
+      returnDeparture: planReturn ? nextTimeAfter(departure, returnTime) : null,
+    });
   };
 
   return (
@@ -61,6 +69,12 @@ export function TripForm({ settings, busy, onPlan }: Props) {
             </label>
           ))}
         </div>
+        {vehicle !== 'car' && (
+          <label className="inline">
+            <input type="checkbox" checked={carryVehicle} onChange={(event) => setCarryVehicle(event.target.checked)} />
+            {t('carryVehicle')}
+          </label>
+        )}
       </fieldset>
 
       <fieldset className="field">

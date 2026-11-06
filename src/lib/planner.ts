@@ -5,9 +5,13 @@
 // 2. Rank by a straight-line estimate, then refine the best ones with real street travel times (one request).
 // 3. For the top K spots, fetch the real vehicle route A→P and public-transport routes P→B.
 // 4. Score each combination with a generalized cost and highlight the fastest / cheapest / balanced option.
+// Lots whose live status (Tel Aviv municipal lots) reports full or closed are skipped before step 2.
 
 import { haversineMeters, isPointInRing } from './geo.ts';
-import type { Itinerary, RouteLeg, RoutingApi } from './transitous.ts';
+import { isFullOrClosed } from './telAvivParking.ts';
+import type { LiveLotStatus } from './telAvivParking.ts';
+import { rideAccess, walkAccess } from './transitous.ts';
+import type { Itinerary, RouteLeg, RoutingApi, StreetAccess } from './transitous.ts';
 import type { AvoidZone, LatLng, ParkingSpot, Settings, TripRequest, VehicleType } from './types.ts';
 
 /** dist(A,P) + dist(P,B) must not exceed this factor × dist(A,B). */
@@ -25,11 +29,13 @@ const PARKING_BUFFER_SECONDS: Record<VehicleType, number> = { car: 5 * 60, bicyc
 const ESTIMATE_SPEED_MPS: Record<VehicleType, number> = { car: 11, bicycle: 4.2, scooter: 5.5 };
 const ESTIMATE_TRANSIT_SPEED_MPS = 6;
 const WALKING_SPEED_MPS = 1.3;
+/** Longest ride at each end when the bicycle/scooter is carried on board. */
+const CARRY_ON_MAX_RIDE_SECONDS = 20 * 60;
 /** Generalized-cost penalties, in minutes. */
 const TRANSFER_PENALTY_MINUTES = 5;
 const EXTRA_WALK_WEIGHT = 0.5;
 
-export type OptionKind = 'park_and_ride' | 'vehicle_only' | 'transit_only';
+export type OptionKind = 'park_and_ride' | 'vehicle_only' | 'transit_only' | 'carry_on';
 
 export interface TripOption {
   id: string;
@@ -55,10 +61,16 @@ export interface Highlights {
 
 export interface PlanResult {
   candidatesConsidered: number;
+  /** Candidates dropped because their live status said full or closed. */
+  skippedFullOrClosed: number;
+  liveStatuses: Map<string, LiveLotStatus>;
+  liveStatusError: string | null;
   options: TripOption[];
   highlights: Highlights | null;
   vehicleOnly: TripOption | null;
   transitOnly: TripOption | null;
+  /** Bicycle/scooter carried on board, ridden at both ends (only when requested). */
+  carryOn: TripOption | null;
 }
 
 // ---------- Step 1: candidate filtering (pure) ----------
@@ -209,6 +221,34 @@ export function pickHighlights(options: TripOption[]): Highlights | null {
 
 // ---------- Orchestration (network) ----------
 
+/** Routing plus live lot status; injected so the planner can be unit-tested. */
+export interface PlannerApi extends RoutingApi {
+  lotStatuses: () => Promise<Map<string, LiveLotStatus>>;
+}
+
+interface LiveStatusLookup {
+  statuses: Map<string, LiveLotStatus>;
+  /** Set when the live-status service failed; planning continues without it and the UI shows this. */
+  error: string | null;
+}
+
+async function lookUpLiveStatuses(candidates: ParkingSpot[], api: PlannerApi): Promise<LiveStatusLookup> {
+  if (!candidates.some((spot) => spot.liveStatus !== null)) {
+    return { statuses: new Map(), error: null };
+  }
+  return api.lotStatuses().then(
+    (statuses) => ({ statuses, error: null }),
+    (reason: Error) => ({ statuses: new Map(), error: reason.message }),
+  );
+}
+
+export function isReportedFullOrClosed(spot: ParkingSpot, statuses: Map<string, LiveLotStatus>): boolean {
+  const status = statuses.get(spot.id);
+  return status !== undefined && isFullOrClosed(status.occupancy);
+}
+
+const walkingAccess = (settings: Settings): StreetAccess => walkAccess(Math.round(settings.maxWalkMeters / WALKING_SPEED_MPS));
+
 async function rankByStreetTime(candidates: ParkingSpot[], request: TripRequest, api: RoutingApi): Promise<ParkingSpot[]> {
   const byEstimate = [...candidates].sort((a, b) => estimateSecondsVia(a, request, null) - estimateSecondsVia(b, request, null));
   const shortlist = topWithParkAndRide(byEstimate, STREET_LOOKUP_COUNT, STREET_LOOKUP_EXTRA_PARK_AND_RIDE);
@@ -229,8 +269,7 @@ async function routeViaSpot(spot: ParkingSpot, request: TripRequest, settings: S
     return [];
   }
   const transitDeparture = new Date(vehicleRoute.endTime.getTime() + PARKING_BUFFER_SECONDS[request.vehicle] * 1000);
-  const maxWalkSeconds = Math.round(settings.maxWalkMeters / WALKING_SPEED_MPS);
-  const itineraries = await api.transitRoutes(spot.location, request.destination.location, transitDeparture, maxWalkSeconds, settings.language);
+  const itineraries = await api.transitRoutes(spot.location, request.destination.location, transitDeparture, walkingAccess(settings), settings.language);
   return itineraries.map((itinerary) =>
     buildOption('park_and_ride', spot, [...vehicleRoute.legs, ...itinerary.legs], itinerary.transfers, request, settings),
   );
@@ -241,11 +280,20 @@ async function vehicleOnlyOption(request: TripRequest, settings: Settings, api: 
   return route === null ? null : buildOption('vehicle_only', null, route.legs, 0, request, settings);
 }
 
-async function transitOnlyOption(request: TripRequest, settings: Settings, api: RoutingApi): Promise<TripOption | null> {
-  const maxWalkSeconds = Math.round(settings.maxWalkMeters / WALKING_SPEED_MPS);
-  const itineraries = await api.transitRoutes(request.origin.location, request.destination.location, request.departure, maxWalkSeconds, settings.language);
-  const options = itineraries.map((it) => buildOption('transit_only', null, it.legs, it.transfers, request, settings));
+/** Best public-transport trip between A and B with the given access mode, as an option of `kind`. */
+async function bestTransitOption(kind: 'transit_only' | 'carry_on', access: StreetAccess, request: TripRequest, settings: Settings, api: RoutingApi): Promise<TripOption | null> {
+  const itineraries = await api.transitRoutes(request.origin.location, request.destination.location, request.departure, access, settings.language);
+  const options = itineraries
+    .filter((it) => it.legs.some((leg) => leg.isTransit))
+    .map((it) => buildOption(kind, null, it.legs, it.transfers, request, settings));
   return options.length === 0 ? null : minBy(options, (o) => o.generalizedCost);
+}
+
+async function carryOnOption(request: TripRequest, settings: Settings, api: RoutingApi): Promise<TripOption | null> {
+  if (!request.carryVehicle) {
+    return null;
+  }
+  return bestTransitOption('carry_on', rideAccess(request.vehicle, CARRY_ON_MAX_RIDE_SECONDS), request, settings, api);
 }
 
 /** Keeps the best option per parking spot, ordered by generalized cost. */
@@ -261,16 +309,32 @@ function bestPerSpot(options: TripOption[]): TripOption[] {
   return [...best.values()].sort((a, b) => a.generalizedCost - b.generalizedCost);
 }
 
-export async function planTrip(request: TripRequest, settings: Settings, spots: ParkingSpot[], zones: AvoidZone[], api: RoutingApi): Promise<PlanResult> {
+export async function planTrip(request: TripRequest, settings: Settings, spots: ParkingSpot[], zones: AvoidZone[], api: PlannerApi): Promise<PlanResult> {
+  if (request.carryVehicle && request.vehicle === 'car') {
+    throw new Error('carryVehicle is only possible with a bicycle or scooter');
+  }
   const candidates = filterCandidates(spots, request, settings, zones);
-  const ranked = await rankByStreetTime(candidates, request, api);
-  const [viaSpots, vehicleOnly, transitOnly] = await Promise.all([
+  const live = await lookUpLiveStatuses(candidates, api);
+  const open = candidates.filter((spot) => !isReportedFullOrClosed(spot, live.statuses));
+  const ranked = await rankByStreetTime(open, request, api);
+  const [viaSpots, vehicleOnly, transitOnly, carryOn] = await Promise.all([
     Promise.all(topWithParkAndRide(ranked, FULL_ROUTING_COUNT, FULL_ROUTING_EXTRA_PARK_AND_RIDE).map((spot) => routeViaSpot(spot, request, settings, api))),
     vehicleOnlyOption(request, settings, api),
-    transitOnlyOption(request, settings, api),
+    bestTransitOption('transit_only', walkingAccess(settings), request, settings, api),
+    carryOnOption(request, settings, api),
   ]);
   const options = bestPerSpot(viaSpots.flat());
-  return { candidatesConsidered: candidates.length, options, highlights: pickHighlights(options), vehicleOnly, transitOnly };
+  return {
+    candidatesConsidered: candidates.length,
+    skippedFullOrClosed: candidates.length - open.length,
+    liveStatuses: live.statuses,
+    liveStatusError: live.error,
+    options,
+    highlights: pickHighlights(options),
+    vehicleOnly,
+    transitOnly,
+    carryOn,
+  };
 }
 
 /** The public-transport trip back from the destination to the parked vehicle. */
@@ -278,7 +342,6 @@ export async function planReturnTrip(option: TripOption, request: TripRequest, s
   if (option.spot === null || request.returnDeparture === null) {
     throw new Error('planReturnTrip needs a park-and-ride option and a return time');
   }
-  const maxWalkSeconds = Math.round(settings.maxWalkMeters / WALKING_SPEED_MPS);
-  const itineraries = await api.transitRoutes(request.destination.location, option.spot.location, request.returnDeparture, maxWalkSeconds, settings.language);
+  const itineraries = await api.transitRoutes(request.destination.location, option.spot.location, request.returnDeparture, walkingAccess(settings), settings.language);
   return itineraries.length === 0 ? null : minBy(itineraries, (it) => it.endTime.getTime());
 }

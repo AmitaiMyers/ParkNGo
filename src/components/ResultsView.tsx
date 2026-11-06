@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
-import { formatTime } from '../lib/i18n.ts';
+import { formatArrival, formatTime } from '../lib/i18n.ts';
 import type { MessageKey } from '../lib/i18n.ts';
 import { MAX_STATION_DISTANCE_METERS } from '../lib/osmImport.ts';
 import { planReturnTrip } from '../lib/planner.ts';
 import type { PlanResult, TripOption } from '../lib/planner.ts';
+import type { LiveLotStatus } from '../lib/telAvivParking.ts';
 import { transitousApi } from '../lib/transitous.ts';
 import type { Itinerary } from '../lib/transitous.ts';
 import type { Settings, TripRequest } from '../lib/types.ts';
@@ -78,11 +79,30 @@ function ReturnTrip({ option, request, settings }: { option: TripOption; request
   }
 }
 
+const LIVE_DOT: Record<LiveLotStatus['occupancy'], string> = {
+  available: '🟢',
+  few: '🟡',
+  full: '🔴',
+  closed: '⚫',
+  open_no_count: '🔵',
+  no_data: '⚪',
+};
+
+function LiveStatusBadge({ status }: { status: LiveLotStatus }) {
+  const { language, t } = useI18n();
+  return (
+    <p className={`live-status live-${status.occupancy}`}>
+      {LIVE_DOT[status.occupancy]} {t(`live_${status.occupancy}`)}
+      {status.updatedAt !== null && <> · {t('liveUpdated', { time: formatTime(language, status.updatedAt) })}</>}
+    </p>
+  );
+}
+
 function OptionSummary({ option }: { option: TripOption }) {
   const { language, t } = useI18n();
   return (
     <p className="summary">
-      <strong>{t('minutes', { n: Math.round(option.totalMinutes) })}</strong> · {t('arriveAt', { time: formatTime(language, option.arrival) })}
+      <strong>{t('minutes', { n: Math.round(option.totalMinutes) })}</strong> · {t('arriveAt', { time: formatArrival(language, option.arrival, option.departure) })}
       {option.legs.some((leg) => leg.isTransit) && <> · {t('transfers', { n: option.transfers })}</>}
       {option.walkMinutes >= 1 && <> · {t('walk', { n: Math.round(option.walkMinutes) })}</>}
       {option.fuelCostIls > 0 && <> · {t('fuel', { amount: option.fuelCostIls.toFixed(1) })}</>}
@@ -116,6 +136,8 @@ export function ResultsView({ result, request, settings, onNavigate }: Props) {
       <h2>{t('results')}</h2>
       <MapView className="map map-preview" legs={mapLegs} markers={markers} follow={null} />
       <p className="muted">{t('candidates', { n: result.candidatesConsidered })}</p>
+      {result.skippedFullOrClosed > 0 && <p className="muted">{t('skippedFull', { n: result.skippedFullOrClosed })}</p>}
+      {result.liveStatusError !== null && <p className="warning">{t('liveStatusUnavailable', { error: result.liveStatusError })}</p>}
 
       {cards.length === 0 && <p className="warning">{t('noOptions')}</p>}
 
@@ -138,13 +160,16 @@ export function ResultsView({ result, request, settings, onNavigate }: Props) {
             <h3>
               {t('parkAt')} {spotDisplayName(spot, i18n)} <span className="price">{priceLabel(spot, i18n)}</span>
             </h3>
-            <p className="muted">
-              {spot.nearestStation.distanceMeters <= MAX_STATION_DISTANCE_METERS && (
-                <>🚉 {t('walkToStation', { meters: spot.nearestStation.distanceMeters, station: spot.nearestStation.name })}</>
-              )}
-              {spot.priceNote !== null && <> · {spot.priceNote}</>}
-            </p>
+            {spot.nearestStation.distanceMeters <= MAX_STATION_DISTANCE_METERS && (
+              <p className="muted">🚉 {t('walkToStation', { meters: spot.nearestStation.distanceMeters, station: spot.nearestStation.name })}</p>
+            )}
+            {spot.priceNote !== null && (
+              <p className="muted small price-note" title={spot.priceNote}>
+                {spot.priceNote}
+              </p>
+            )}
             {spot.openingHours !== null && <p className="muted">{t('openingHours', { hours: spot.openingHours })}</p>}
+            {result.liveStatuses.has(spot.id) && <LiveStatusBadge status={result.liveStatuses.get(spot.id)!} />}
             <OptionSummary option={option} />
             {isSelected && request.returnDeparture !== null && <ReturnTrip option={option} request={request} settings={settings} />}
             <button type="button" className="primary" onClick={() => onNavigate(option)}>
@@ -153,6 +178,17 @@ export function ResultsView({ result, request, settings, onNavigate }: Props) {
           </article>
         );
       })}
+
+      {result.carryOn !== null && (
+        <article className="card option">
+          <h3>{t('carryOn')}</h3>
+          <OptionSummary option={result.carryOn} />
+          <p className="muted small">{t('carryOnNote')}</p>
+          <button type="button" className="primary" onClick={() => onNavigate(result.carryOn!)}>
+            {t('navigate')}
+          </button>
+        </article>
+      )}
 
       <h3>{t('compareWith')}</h3>
       {result.vehicleOnly !== null && (

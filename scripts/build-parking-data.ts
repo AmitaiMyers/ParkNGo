@@ -16,6 +16,7 @@ import {
   spotFromOsm,
   stationsFrom,
 } from '../src/lib/osmImport.ts';
+import { fetchAhuzotLots, spotFromAhuzot, withoutDuplicates } from '../src/lib/telAvivParking.ts';
 import type { AvoidZone, ParkingDataset, ParkingSpot, VehicleType } from '../src/lib/types.ts';
 
 const USER_AGENT = 'ParkNGo-data-builder/0.1 (https://github.com/AmitaiMyers/ParkNGo)';
@@ -69,11 +70,19 @@ function logParkAndRideReport(spots: ParkingSpot[]): void {
 }
 
 async function main(): Promise<void> {
-  const [elements, avoidZones, curatedText] = await Promise.all([fetchOsmElements(), fetchAvoidZones(), readFile(CURATED_PATH, 'utf8')]);
+  const [elements, avoidZones, curatedText, ahuzotLots] = await Promise.all([
+    fetchOsmElements(),
+    fetchAvoidZones(),
+    readFile(CURATED_PATH, 'utf8'),
+    fetchAhuzotLots(),
+  ]);
   const stations = stationsFrom(elements);
   console.log(`OSM: ${elements.length} elements, ${stations.length} named stations`);
 
-  const osmSpots = elements.map((element) => spotFromOsm(element, stations)).filter((spot): spot is ParkingSpot => spot !== null);
+  const ahuzotSpots = ahuzotLots.map((lot) => spotFromAhuzot(lot, stations)).filter((spot): spot is ParkingSpot => spot !== null);
+  const allOsmSpots = elements.map((element) => spotFromOsm(element, stations)).filter((spot): spot is ParkingSpot => spot !== null);
+  const osmSpots = withoutDuplicates(allOsmSpots, ahuzotSpots);
+  console.log(`Tel Aviv municipal lots: ${ahuzotLots.length} (${ahuzotSpots.length} near transit); dropped ${allOsmSpots.length - osmSpots.length} OSM duplicates`);
 
   // Curated spots omit nearestStation; it is computed here, then the whole record is validated.
   const curatedSpots = requireArray(JSON.parse(curatedText), 'curated-parking.json').map((raw) => {
@@ -84,8 +93,8 @@ async function main(): Promise<void> {
 
   const dataset: ParkingDataset = {
     generatedAt: new Date().toISOString(),
-    attribution: '© OpenStreetMap contributors (ODbL) + ParkNGo curated list',
-    spots: [...curatedSpots, ...osmSpots],
+    attribution: '© OpenStreetMap contributors (ODbL) + Tel Aviv-Yafo Municipality GIS + ParkNGo curated list',
+    spots: [...curatedSpots, ...ahuzotSpots, ...osmSpots],
     avoidZones,
   };
   await mkdir(new URL('.', OUTPUT_PATH), { recursive: true });

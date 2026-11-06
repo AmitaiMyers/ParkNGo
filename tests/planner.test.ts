@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { buildOption, filterCandidates, generalizedCost, isPriceAccepted, pickHighlights, planTrip, topWithParkAndRide } from '../src/lib/planner.ts';
-import type { RoutingApi } from '../src/lib/transitous.ts';
+import type { PlannerApi } from '../src/lib/planner.ts';
+import type { StreetAccess } from '../src/lib/transitous.ts';
+import type { LiveLotStatus } from '../src/lib/telAvivParking.ts';
 import type { AvoidZone, LatLng } from '../src/lib/types.ts';
 import { itineraryOf, makeLeg, makeRequest, makeSpot, settings } from './fixtures.ts';
 
@@ -71,14 +73,60 @@ describe('planTrip', () => {
   const nearSpot = makeSpot({ id: 'near', location: ON_THE_WAY, price: { type: 'free' } });
   const paidSpot = makeSpot({ id: 'paid', location: { lat: 32.11, lng: 34.83 }, price: { type: 'paid', dailyIls: 15 } });
 
-  const fakeApi: RoutingApi = {
+  const accessModesSeen: StreetAccess['mode'][] = [];
+  let lotStatusCalls = 0;
+  const fakeApi: PlannerApi = {
+    lotStatuses: async () => {
+      lotStatusCalls++;
+      return new Map<string, LiveLotStatus>([
+        ['full-lot', { occupancy: 'full', updatedAt: null }],
+        ['few-lot', { occupancy: 'few', updatedAt: null }],
+      ]);
+    },
     streetDurations: async (_origin, targets) => targets.map(() => 900),
     streetRoute: async (from, to, _vehicle, time) => itineraryOf([makeLeg('CAR', from, to, time, 15, 9000)], 0),
-    transitRoutes: async (from, to, time) => {
+    transitRoutes: async (from, to, time, access) => {
+      accessModesSeen.push(access.mode);
       const minutes = from.lat === nearSpot.location.lat ? 35 : 20;
-      return [itineraryOf([makeLeg('WALK', from, from, time, 4, 300), makeLeg('RAIL', from, to, new Date(time.getTime() + 4 * 60_000), minutes, null)], 0)];
+      return [itineraryOf([makeLeg(access.mode, from, from, time, 4, 300), makeLeg('RAIL', from, to, new Date(time.getTime() + 4 * 60_000), minutes, null)], 0)];
     },
   };
+  const tlvLot = (id: string) =>
+    makeSpot({ id, location: { lat: 32.12, lng: 34.835 }, source: 'tlv-ahuzot', liveStatus: { provider: 'tlv-ahuzot', lotCode: 1 }, price: { type: 'paid', dailyIls: null } });
+
+  it('skips lots reported full or closed and keeps the live status of the others', async () => {
+    const result = await planTrip(request, settings, [nearSpot, tlvLot('full-lot'), tlvLot('few-lot')], [], fakeApi);
+    expect(result.candidatesConsidered).toBe(3);
+    expect(result.skippedFullOrClosed).toBe(1);
+    expect(result.options.map((o) => o.spot!.id).sort()).toEqual(['few-lot', 'near']);
+    expect(result.liveStatuses.get('few-lot')!.occupancy).toBe('few');
+    expect(result.liveStatusError).toBeNull();
+  });
+
+  it('does not call the live-status service when no candidate has live data', async () => {
+    const before = lotStatusCalls;
+    await planTrip(request, settings, [nearSpot], [], fakeApi);
+    expect(lotStatusCalls).toBe(before);
+  });
+
+  it('keeps planning, and reports the error, when the live-status service fails', async () => {
+    const failing: PlannerApi = { ...fakeApi, lotStatuses: async () => Promise.reject(new Error('HTTP 503')) };
+    const result = await planTrip(request, settings, [nearSpot, tlvLot('full-lot')], [], failing);
+    expect(result.liveStatusError).toBe('HTTP 503');
+    expect(result.skippedFullOrClosed).toBe(0);
+    expect(result.options).toHaveLength(2);
+  });
+
+  it('adds a carry-on option (ride at both ends) only when requested with a bicycle or scooter', async () => {
+    accessModesSeen.length = 0;
+    const bikeRequest = makeRequest({ departure, vehicle: 'bicycle', carryVehicle: true });
+    const result = await planTrip(bikeRequest, settings, [], [], fakeApi);
+    expect(result.carryOn!.kind).toBe('carry_on');
+    expect(result.carryOn!.legs[0]!.mode).toBe('BIKE');
+    expect(accessModesSeen).toContain('BIKE');
+    expect((await planTrip(request, settings, [], [], fakeApi)).carryOn).toBeNull();
+    await expect(planTrip(makeRequest({ carryVehicle: true }), settings, [], [], fakeApi)).rejects.toThrow(/bicycle or scooter/);
+  });
 
   it('returns highlighted park-and-ride options plus both baselines', async () => {
     const result = await planTrip(request, settings, [nearSpot, paidSpot], [], fakeApi);
