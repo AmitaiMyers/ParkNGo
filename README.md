@@ -29,6 +29,7 @@ See [docs/RESEARCH.md](docs/RESEARCH.md) for the full research, the algorithm an
 |---|---|
 | Transit + street routing, geocoding | [Transitous](https://transitous.org) (MOTIS 2): free, includes the Israeli MOT GTFS feed |
 | Parking spots + stations | OpenStreetMap via Overpass (rebuilt on every deploy) + `data/curated-parking.json` |
+| Park & ride lots | OpenStreetMap: `park_ride=*`, legacy `parking=park_and_ride`, or a name containing "חנה וסע" / "Park & Ride". These lots are always kept, even far from rail (shuttle-served), and the planner always tries the best ones. Each deploy log lists the lots found. |
 | Avoid-zone boundaries | OpenStreetMap administrative boundaries via Nominatim |
 | Map tiles | OpenStreetMap |
 

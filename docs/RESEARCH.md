@@ -24,6 +24,9 @@ Changes from the research proposal, found while implementing:
 - **Transitous street steps carry no turn directions:** every step is `CONTINUE`. Turns are derived from the step geometry (`src/lib/maneuvers.ts`).
 - **Storage uses `localStorage`** instead of IndexedDB. The data is tiny (settings, parked location), so it is simpler.
 - **The parking data is built at deploy time** by the GitHub Action, not committed. If Overpass fails, the deploy fails, and the previous version stays online.
+- **Park-and-ride lots are collected from OpenStreetMap** (`park_ride=*`, `parking=park_and_ride`, or a "חנה וסע" / "Park & Ride" name).
+  They skip the "near a rail station" rule, because many are served by shuttle buses (e.g. Shapirim). The planner always
+  fully routes the 2 best of them, in addition to the top 5 lots. The deploy log prints every lot found.
 - **Live lot status (Ahuzot HaHof)** is not implemented. Those lots are mostly *inside* Tel Aviv, which is the default avoid zone, so they rarely matter to this app. The Tel Aviv GIS host was also unreachable from the development sandbox. This is a candidate for the next iteration.
 
 ---

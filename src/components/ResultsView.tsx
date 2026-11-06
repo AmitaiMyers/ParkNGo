@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { formatTime } from '../lib/i18n.ts';
 import type { MessageKey } from '../lib/i18n.ts';
+import { MAX_STATION_DISTANCE_METERS } from '../lib/osmImport.ts';
 import { planReturnTrip } from '../lib/planner.ts';
 import type { PlanResult, TripOption } from '../lib/planner.ts';
 import { transitousApi } from '../lib/transitous.ts';
@@ -138,7 +139,9 @@ export function ResultsView({ result, request, settings, onNavigate }: Props) {
               {t('parkAt')} {spotDisplayName(spot, i18n)} <span className="price">{priceLabel(spot, i18n)}</span>
             </h3>
             <p className="muted">
-              🚉 {t('walkToStation', { meters: spot.nearestStation.distanceMeters, station: spot.nearestStation.name })}
+              {spot.nearestStation.distanceMeters <= MAX_STATION_DISTANCE_METERS && (
+                <>🚉 {t('walkToStation', { meters: spot.nearestStation.distanceMeters, station: spot.nearestStation.name })}</>
+              )}
               {spot.priceNote !== null && <> · {spot.priceNote}</>}
             </p>
             {spot.openingHours !== null && <p className="muted">{t('openingHours', { hours: spot.openingHours })}</p>}

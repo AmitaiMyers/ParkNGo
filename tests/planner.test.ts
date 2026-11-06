@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildOption, filterCandidates, generalizedCost, isPriceAccepted, pickHighlights, planTrip } from '../src/lib/planner.ts';
+import { buildOption, filterCandidates, generalizedCost, isPriceAccepted, pickHighlights, planTrip, topWithParkAndRide } from '../src/lib/planner.ts';
 import type { RoutingApi } from '../src/lib/transitous.ts';
 import type { AvoidZone, LatLng } from '../src/lib/types.ts';
 import { itineraryOf, makeLeg, makeRequest, makeSpot, settings } from './fixtures.ts';
@@ -125,5 +125,22 @@ describe('pickHighlights', () => {
     const unknown = optionVia('unknown', null, 12_000, 20);
     const paid = optionVia('paid', 15, 12_000, 30);
     expect(pickHighlights([unknown, paid])!.cheapest.spot!.id).toBe('paid');
+  });
+});
+
+describe('park & ride handling', () => {
+  it('keeps park-and-ride lots far from a rail station, but not ordinary lots', () => {
+    const farStation = { name: 'S', distanceMeters: 3000, location: ON_THE_WAY };
+    const spots = [
+      makeSpot({ id: 'pnr', location: ON_THE_WAY, isParkAndRide: true, nearestStation: farStation }),
+      makeSpot({ id: 'ordinary', location: ON_THE_WAY, nearestStation: farStation }),
+    ];
+    expect(filterCandidates(spots, makeRequest(), settings, []).map((s) => s.id)).toEqual(['pnr']);
+  });
+
+  it('topWithParkAndRide appends the best park-and-ride lots beyond the cut', () => {
+    const ranked = ['a', 'b', 'c', 'pnr1', 'd', 'pnr2', 'pnr3'].map((id) => makeSpot({ id, location: ON_THE_WAY, isParkAndRide: id.startsWith('pnr') }));
+    expect(topWithParkAndRide(ranked, 2, 2).map((s) => s.id)).toEqual(['a', 'b', 'pnr1', 'pnr2']);
+    expect(topWithParkAndRide(ranked, 4, 2).map((s) => s.id)).toEqual(['a', 'b', 'c', 'pnr1', 'pnr2', 'pnr3']);
   });
 });

@@ -12,10 +12,12 @@ import type { AvoidZone, LatLng, ParkingSpot, Settings, TripRequest, VehicleType
 
 /** dist(A,P) + dist(P,B) must not exceed this factor × dist(A,B). */
 export const DETOUR_FACTOR = 1.5;
-/** How many spots get a real street-time lookup (one batched request). */
+/** How many spots get a real street-time lookup (one batched request), plus extra park-and-ride lots. */
 export const STREET_LOOKUP_COUNT = 25;
-/** How many spots get full vehicle + transit routing (two requests each). */
+export const STREET_LOOKUP_EXTRA_PARK_AND_RIDE = 5;
+/** How many spots get full vehicle + transit routing (two requests each), plus extra park-and-ride lots. */
 export const FULL_ROUTING_COUNT = 5;
+export const FULL_ROUTING_EXTRA_PARK_AND_RIDE = 2;
 const MAX_VEHICLE_SECONDS = 2 * 60 * 60;
 /** Time to park, lock and walk out of the lot before the transit part starts. */
 const PARKING_BUFFER_SECONDS: Record<VehicleType, number> = { car: 5 * 60, bicycle: 2 * 60, scooter: 2 * 60 };
@@ -87,18 +89,32 @@ export function filterCandidates(spots: ParkingSpot[], request: TripRequest, set
     (spot) =>
       spot.vehicleTypes.includes(request.vehicle) &&
       isPriceAccepted(spot, settings) &&
-      spot.nearestStation.distanceMeters <= settings.maxWalkMeters &&
+      // Park-and-ride lots are built for transit (often shuttle buses), so the rail-walk rule does not apply.
+      (spot.isParkAndRide || spot.nearestStation.distanceMeters <= settings.maxWalkMeters) &&
       !isInsideAnyZone(spot.location, activeZones) &&
       isWithinDetour(spot, request.origin.location, request.destination.location),
   );
 }
 
-/** Rough door-to-door seconds via a spot, using straight-line distances. */
+/**
+ * Rough door-to-door seconds via a spot, using straight-line distances.
+ * Ordinary lots: walk to the nearest rail station, then transit. Park-and-ride lots: transit starts at the lot.
+ */
 export function estimateSecondsVia(spot: ParkingSpot, request: TripRequest, vehicleSeconds: number | null): number {
-  const vehicle = vehicleSeconds ?? haversineMeters(request.origin.location, spot.location) / ESTIMATE_SPEED_MPS[request.vehicle];
-  const walk = spot.nearestStation.distanceMeters / WALKING_SPEED_MPS;
-  const transit = haversineMeters(spot.nearestStation.location, request.destination.location) / ESTIMATE_TRANSIT_SPEED_MPS;
+  const vehicle = vehicleSeconds === null ? haversineMeters(request.origin.location, spot.location) / ESTIMATE_SPEED_MPS[request.vehicle] : vehicleSeconds;
+  const transitStart = spot.isParkAndRide ? spot.location : spot.nearestStation.location;
+  const walk = spot.isParkAndRide ? 0 : spot.nearestStation.distanceMeters / WALKING_SPEED_MPS;
+  const transit = haversineMeters(transitStart, request.destination.location) / ESTIMATE_TRANSIT_SPEED_MPS;
   return vehicle + walk + transit;
+}
+
+/**
+ * The first `count` spots of an already ranked list, plus the best `extraParkAndRide`
+ * official park-and-ride lots that did not make the cut — so park & ride is always considered.
+ */
+export function topWithParkAndRide(ranked: ParkingSpot[], count: number, extraParkAndRide: number): ParkingSpot[] {
+  const extras = ranked.slice(count).filter((spot) => spot.isParkAndRide).slice(0, extraParkAndRide);
+  return [...ranked.slice(0, count), ...extras];
 }
 
 // ---------- Step 4: scoring (pure) ----------
@@ -194,7 +210,8 @@ export function pickHighlights(options: TripOption[]): Highlights | null {
 // ---------- Orchestration (network) ----------
 
 async function rankByStreetTime(candidates: ParkingSpot[], request: TripRequest, api: RoutingApi): Promise<ParkingSpot[]> {
-  const shortlist = [...candidates].sort((a, b) => estimateSecondsVia(a, request, null) - estimateSecondsVia(b, request, null)).slice(0, STREET_LOOKUP_COUNT);
+  const byEstimate = [...candidates].sort((a, b) => estimateSecondsVia(a, request, null) - estimateSecondsVia(b, request, null));
+  const shortlist = topWithParkAndRide(byEstimate, STREET_LOOKUP_COUNT, STREET_LOOKUP_EXTRA_PARK_AND_RIDE);
   if (shortlist.length === 0) {
     return [];
   }
@@ -248,7 +265,7 @@ export async function planTrip(request: TripRequest, settings: Settings, spots: 
   const candidates = filterCandidates(spots, request, settings, zones);
   const ranked = await rankByStreetTime(candidates, request, api);
   const [viaSpots, vehicleOnly, transitOnly] = await Promise.all([
-    Promise.all(ranked.slice(0, FULL_ROUTING_COUNT).map((spot) => routeViaSpot(spot, request, settings, api))),
+    Promise.all(topWithParkAndRide(ranked, FULL_ROUTING_COUNT, FULL_ROUTING_EXTRA_PARK_AND_RIDE).map((spot) => routeViaSpot(spot, request, settings, api))),
     vehicleOnlyOption(request, settings, api),
     transitOnlyOption(request, settings, api),
   ]);

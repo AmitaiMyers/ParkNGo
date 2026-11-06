@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { parseParkingSpot } from '../src/lib/dataset.ts';
-import { outerRingsFromGeoJson, parseOsmElement, priceFromTags, spotFromOsm, stationsFrom } from '../src/lib/osmImport.ts';
+import { isParkAndRideTags, outerRingsFromGeoJson, parseOsmElement, priceFromTags, spotFromOsm, stationsFrom } from '../src/lib/osmImport.ts';
 
 const station = parseOsmElement({ type: 'node', id: 1, lat: 32.1, lon: 34.8, tags: { railway: 'station', name: 'Tel Aviv University' } });
 
@@ -57,5 +57,26 @@ describe('outerRingsFromGeoJson', () => {
     const ring = [[34.7, 32.0], [34.8, 32.0], [34.8, 32.1], [34.7, 32.0]];
     expect(outerRingsFromGeoJson({ type: 'Polygon', coordinates: [ring] })[0]![1]).toEqual({ lat: 32.0, lng: 34.8 });
     expect(outerRingsFromGeoJson({ type: 'MultiPolygon', coordinates: [[ring], [ring]] })).toHaveLength(2);
+  });
+});
+
+describe('isParkAndRideTags', () => {
+  it('uses park_ride, legacy parking=park_and_ride, and Hebrew/English names', () => {
+    expect(isParkAndRideTags({ amenity: 'parking', park_ride: 'bus' })).toBe(true);
+    expect(isParkAndRideTags({ amenity: 'parking', park_ride: 'no', name: 'חנה וסע שפירים' })).toBe(false);
+    expect(isParkAndRideTags({ amenity: 'parking', parking: 'park_and_ride' })).toBe(true);
+    expect(isParkAndRideTags({ amenity: 'parking', name: 'חניון חנה וסע שפירים' })).toBe(true);
+    expect(isParkAndRideTags({ amenity: 'parking', name: 'חנה-וסע הנתיב' })).toBe(true);
+    expect(isParkAndRideTags({ amenity: 'parking', 'name:en': "Park'n'Ride Shefayim" })).toBe(true);
+    expect(isParkAndRideTags({ amenity: 'parking', 'name:en': 'Park and Ride' })).toBe(true);
+    expect(isParkAndRideTags({ amenity: 'parking', name: 'חניון עירוני' })).toBe(false);
+  });
+
+  it('keeps a park-and-ride lot even when no rail station is nearby (shuttle-served lots)', () => {
+    const stations = stationsFrom([station]);
+    const shuttleLot = parseOsmElement({ type: 'way', id: 20, center: { lat: 32.2, lon: 34.8 }, tags: { amenity: 'parking', name: 'חנה וסע' } });
+    const spot = spotFromOsm(shuttleLot, stations)!;
+    expect(spot.isParkAndRide).toBe(true);
+    expect(spot.nearestStation.distanceMeters).toBeGreaterThan(10_000);
   });
 });

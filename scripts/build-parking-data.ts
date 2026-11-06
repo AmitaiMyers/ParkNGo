@@ -4,7 +4,7 @@
 // Environment overrides:
 //   OVERPASS_URL   (default https://overpass-api.de/api/interpreter)
 
-import { readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { requireArray, requireObject } from '../src/lib/assert.ts';
 import { parseLatLng, parseParkingSpot } from '../src/lib/dataset.ts';
 import {
@@ -54,6 +54,20 @@ async function fetchAvoidZones(): Promise<AvoidZone[]> {
   });
 }
 
+/** Prints every park-and-ride lot found, so each deploy log shows what was collected. */
+function logParkAndRideReport(spots: ParkingSpot[]): void {
+  const parkAndRide = spots.filter((spot) => spot.isParkAndRide);
+  console.log(`\nPark & ride lots: ${parkAndRide.length}`);
+  for (const spot of parkAndRide) {
+    const name = spot.name === null ? '(unnamed)' : spot.name;
+    const price = spot.price.type === 'paid' ? `paid${spot.price.dailyIls === null ? '' : ` ₪${spot.price.dailyIls}/day`}` : spot.price.type;
+    const where = `${spot.location.lat.toFixed(5)},${spot.location.lng.toFixed(5)}`;
+    const capacity = spot.capacity === null ? '' : ` cap=${spot.capacity}`;
+    console.log(`  ${spot.id} | ${name} | ${where} | ${price}${capacity} | ${spot.nearestStation.distanceMeters} m to ${spot.nearestStation.name}`);
+  }
+  console.log('');
+}
+
 async function main(): Promise<void> {
   const [elements, avoidZones, curatedText] = await Promise.all([fetchOsmElements(), fetchAvoidZones(), readFile(CURATED_PATH, 'utf8')]);
   const stations = stationsFrom(elements);
@@ -74,8 +88,10 @@ async function main(): Promise<void> {
     spots: [...curatedSpots, ...osmSpots],
     avoidZones,
   };
+  await mkdir(new URL('.', OUTPUT_PATH), { recursive: true });
   await writeFile(OUTPUT_PATH, `${JSON.stringify(dataset)}\n`);
   const byVehicle = (vehicle: VehicleType) => dataset.spots.filter((spot) => spot.vehicleTypes.includes(vehicle)).length;
+  logParkAndRideReport(dataset.spots);
   console.log(`Wrote ${dataset.spots.length} spots (${curatedSpots.length} curated; car ${byVehicle('car')}, bicycle ${byVehicle('bicycle')}) and ${avoidZones.length} avoid zones`);
 }
 

@@ -7,8 +7,13 @@ import type { LatLng, NearestStation, ParkingPrice, ParkingSpot, VehicleType } f
 
 /** Gush Dan bounding box: south, west, north, east. */
 export const GUSH_DAN_BBOX = { south: 31.9, west: 34.7, north: 32.25, east: 35.0 } as const;
-/** Spots farther than this from any rapid-transit station are not useful for park & ride. */
+/**
+ * Ordinary lots farther than this from any rapid-transit station are dropped.
+ * Park-and-ride lots are always kept: many are served by shuttle buses, not rail.
+ */
 export const MAX_STATION_DISTANCE_METERS = 1500;
+/** Names that mark a lot as park & ride even when OSM has no park_ride tag. */
+const PARK_AND_RIDE_NAME = /חנה\s*-?\s*ו\s*-?\s*סע|park\s*(?:&|and|'?n'?)\s*ride/i;
 /** Access values that make a lot unusable for the public. */
 const RESTRICTED_ACCESS = new Set(['private', 'no', 'customers', 'permit', 'residents', 'delivery', 'employees']);
 
@@ -95,6 +100,18 @@ export function priceFromTags(tags: Record<string, string>): { price: ParkingPri
   return { price: { type: 'paid', dailyIls: null }, note: fee };
 }
 
+/** Park & ride per OSM: `park_ride=*` (any value but "no"), legacy `parking=park_and_ride`, or the lot's name. */
+export function isParkAndRideTags(tags: Record<string, string>): boolean {
+  const parkRide = tags['park_ride'];
+  if (parkRide !== undefined) {
+    return parkRide !== 'no';
+  }
+  if (tags['parking'] === 'park_and_ride') {
+    return true;
+  }
+  return ['name', 'name:he', 'name:en'].some((key) => tags[key] !== undefined && PARK_AND_RIDE_NAME.test(tags[key]!));
+}
+
 function vehicleTypesFor(tags: Record<string, string>): VehicleType[] {
   return tags['amenity'] === 'bicycle_parking' ? ['bicycle', 'scooter'] : ['car'];
 }
@@ -111,11 +128,11 @@ export function spotFromOsm(element: OsmElement, stations: Station[]): ParkingSp
     return null;
   }
   const station = nearestStation(element.location, stations);
-  if (station.distanceMeters > MAX_STATION_DISTANCE_METERS) {
+  const isParkAndRide = isParkAndRideTags(element.tags);
+  if (!isParkAndRide && station.distanceMeters > MAX_STATION_DISTANCE_METERS) {
     return null;
   }
   const { price, note } = priceFromTags(element.tags);
-  const parkRide = element.tags['park_ride'];
   return {
     id: `osm:${element.type}/${element.id}`,
     name: element.tags['name'] === undefined ? null : element.tags['name'],
@@ -127,7 +144,7 @@ export function spotFromOsm(element: OsmElement, stations: Station[]): ParkingSp
     priceNote: note,
     capacity: parseCapacity(element.tags),
     openingHours: element.tags['opening_hours'] === undefined ? null : element.tags['opening_hours'],
-    isParkAndRide: parkRide !== undefined && parkRide !== 'no',
+    isParkAndRide,
     nearestStation: station,
   };
 }
