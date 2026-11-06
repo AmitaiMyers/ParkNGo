@@ -124,7 +124,7 @@ test('Home & Work: add from the chip, then plan with one tap', async ({ page }) 
   const dialog = page.getByRole('dialog', { name: 'Settings' });
   await dialog.getByRole('combobox', { name: 'Search for your work address' }).fill('Azrieli');
   await dialog.getByRole('option', { name: /Azrieli Center/ }).click();
-  await expect(dialog.getByText('Azrieli Center, Tel-Aviv')).toBeVisible();
+  await expect(dialog.getByText('Azrieli Center, Tel-Aviv', { exact: true }).filter({ visible: true })).toHaveCount(1);
   await dialog.getByRole('button', { name: 'Close' }).click();
 
   // The Work chip replaces "Add Home & Work" and plans in one tap.

@@ -157,7 +157,9 @@ export function PlaceCombobox({ label, placeholder, saved, recents, offerCurrent
         />
       </div>
       <ul className={styles.listbox} id={listId} role="listbox" aria-label={label} hidden={!expanded}>
-        {suggestions.map((suggestion, index) => (
+        {/* Options exist only while the list is open, so no stale hidden options stay in the page. */}
+        {expanded &&
+          suggestions.map((suggestion, index) => (
           <li
             key={suggestion.key}
             id={`${id}-option-${index}`}
@@ -178,7 +180,7 @@ export function PlaceCombobox({ label, placeholder, saved, recents, offerCurrent
               {suggestion.subtitle !== null && <small>{suggestion.subtitle}</small>}
             </span>
           </li>
-        ))}
+          ))}
       </ul>
       {open && suggestions.length === 0 && query.length >= MIN_QUERY_LENGTH && (
         <p className={`${styles.listbox} ${styles.hint}`}>{searchError === null ? t('noSuggestions') : t('searchFailed', { error: searchError })}</p>
