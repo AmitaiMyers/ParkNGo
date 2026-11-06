@@ -28,12 +28,29 @@ const OUTPUT_PATH = new URL('../public/data/parking.json', import.meta.url);
 /** Congested areas the user can choose to avoid. `osmRelation` is the OSM administrative boundary. */
 const AVOID_ZONE_SOURCES = [{ id: 'tel-aviv-yafo', osmRelation: 1382494, name: { en: 'Tel Aviv-Yafo', he: 'תל אביב-יפו' } }];
 
+/** "Server busy" statuses; Overpass asks clients to retry these with exponential backoff. */
+const RETRYABLE_STATUSES = new Set([429, 502, 503, 504]);
+/** Waits before each retry (exponential backoff). After the last one the error is thrown. */
+const RETRY_DELAYS_MS = [15_000, 30_000, 60_000, 120_000];
+
+const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
 async function fetchJson(url: string, init: RequestInit): Promise<unknown> {
-  const response = await fetch(url, { ...init, headers: { 'User-Agent': USER_AGENT, ...init.headers } });
-  if (!response.ok) {
-    throw new Error(`HTTP ${response.status} from ${url}: ${(await response.text()).slice(0, 300)}`);
+  for (let attempt = 0; ; attempt++) {
+    const response = await fetch(url, { ...init, headers: { 'User-Agent': USER_AGENT, ...init.headers } });
+    if (response.ok) {
+      return response.json();
+    }
+    const delay = RETRY_DELAYS_MS[attempt];
+    if (!RETRYABLE_STATUSES.has(response.status) || delay === undefined) {
+      throw new Error(`HTTP ${response.status} from ${url}: ${(await response.text()).slice(0, 300)}`);
+    }
+    console.log(`HTTP ${response.status} from ${url} (server busy) — retry ${attempt + 1}/${RETRY_DELAYS_MS.length} in ${delay / 1000} s`);
+    if (response.body !== null) {
+      await response.body.cancel(); // release the connection before waiting
+    }
+    await wait(delay);
   }
-  return response.json();
 }
 
 async function fetchOsmElements() {
